@@ -15,15 +15,20 @@ import {
 } from "scripting";
 
 type RuntimeCheck = [string, () => string];
+const globalRuntime = globalThis as any;
 
 const runtimeChecks: RuntimeCheck[] = [
   ["Script.env", () => String(Script?.env)],
-  ["typeof AVPlayer", () => typeof AVPlayer],
-  ["typeof SharedAudioSession", () => typeof SharedAudioSession],
-  ["typeof MediaPlayer", () => typeof MediaPlayer],
-  ["typeof BackgroundURLSession", () => typeof BackgroundURLSession],
-  ["typeof Storage", () => typeof Storage],
-  ["typeof Intent", () => typeof Intent],
+  ["typeof imported AVPlayer", () => typeof AVPlayer],
+  ["typeof global AVPlayer", () => typeof globalRuntime.AVPlayer],
+  ["typeof imported SharedAudioSession", () => typeof SharedAudioSession],
+  ["typeof global SharedAudioSession", () => typeof globalRuntime.SharedAudioSession],
+  ["typeof imported MediaPlayer", () => typeof MediaPlayer],
+  ["typeof global MediaPlayer", () => typeof globalRuntime.MediaPlayer],
+  ["typeof imported BackgroundURLSession", () => typeof BackgroundURLSession],
+  ["typeof global BackgroundURLSession", () => typeof globalRuntime.BackgroundURLSession],
+  ["typeof imported Storage", () => typeof Storage],
+  ["typeof imported Intent", () => typeof Intent],
 ];
 
 function collectChecks() {
@@ -44,7 +49,11 @@ function collectChecks() {
 
 function DiagnoseApp() {
   const checks = collectChecks();
-  const avPlayerType = checks.find((item) => item.label === "typeof AVPlayer")?.value;
+  const avPlayerType =
+    checks.find((item) => item.label === "typeof imported AVPlayer")?.value === "function" ||
+    checks.find((item) => item.label === "typeof global AVPlayer")?.value === "function"
+      ? "function"
+      : "missing";
   const canConstructPlayer = avPlayerType === "function";
 
   return (
@@ -54,7 +63,7 @@ function DiagnoseApp() {
         footer={
           <VStack alignment="leading">
             <Text>这个页面不会创建播放器实例，只检查当前 Scripting 运行时暴露了哪些 API。</Text>
-            <Text>如果 `typeof AVPlayer !== function`，说明问题在 Scripting 运行时本身，不在 Azusa 代码。</Text>
+            <Text>如果 imported 版本是 `undefined`，但 global 版本是 `function`，说明音频 API 更像文档示例里那样是全局对象。</Text>
           </VStack>
         }
       >

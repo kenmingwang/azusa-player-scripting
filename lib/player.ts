@@ -19,15 +19,23 @@ type PlayerBindings = {
 const nativePlayerUnsupportedMessage =
   "当前 Scripting 版本没有可用的 AVPlayer。请先把 Scripting 更新到支持 Audio Player API 的版本，再重新导入这个项目。";
 
-const hasNativeAudioPlayer = () => typeof (AVPlayer as any) === "function";
+const globalRuntime = globalThis as any;
+const AVPlayerCtor = (AVPlayer as any) ?? globalRuntime.AVPlayer;
+const SharedAudioSessionApi =
+  (SharedAudioSession as any) ?? globalRuntime.SharedAudioSession;
+const MediaPlayerApi = (MediaPlayer as any) ?? globalRuntime.MediaPlayer;
+const TimeControlStatusApi =
+  (TimeControlStatus as any) ?? globalRuntime.TimeControlStatus;
+
+const hasNativeAudioPlayer = () => typeof AVPlayerCtor === "function";
 
 const mapStatus = (status: any): PlaybackUiState => {
   switch (status) {
-    case TimeControlStatus?.playing:
+    case TimeControlStatusApi?.playing:
       return "playing";
-    case TimeControlStatus?.waitingToPlayAtSpecifiedRate:
+    case TimeControlStatusApi?.waitingToPlayAtSpecifiedRate:
       return "loading";
-    case TimeControlStatus?.paused:
+    case TimeControlStatusApi?.paused:
     default:
       return "paused";
   }
@@ -85,8 +93,8 @@ class AzusaScriptingPlayer {
     this.bindings.onCurrentTrackChange?.(this.queue[index], this.currentIndex);
     this.emitState("loading", "正在准备播放");
 
-    await SharedAudioSession.setCategory("playback");
-    await SharedAudioSession.setActive(true);
+    await SharedAudioSessionApi.setCategory("playback");
+    await SharedAudioSessionApi.setActive(true);
 
     let track = this.queue[index];
     if (!(track.localFilePath && FileManager.existsSync(track.localFilePath))) {
@@ -137,7 +145,7 @@ class AzusaScriptingPlayer {
       this.bindings.onError?.(nativePlayerUnsupportedMessage);
       return;
     }
-    if (this.player.timeControlStatus === TimeControlStatus?.playing) {
+    if (this.player.timeControlStatus === TimeControlStatusApi?.playing) {
       this.pause();
     } else {
       this.resume();
@@ -158,8 +166,8 @@ class AzusaScriptingPlayer {
     this.player.stop();
     this.stopTicker();
     this.emitState("paused");
-    if (MediaPlayer) {
-      MediaPlayer.nowPlayingInfo = null;
+    if (MediaPlayerApi) {
+      MediaPlayerApi.nowPlayingInfo = null;
     }
   }
 
@@ -169,8 +177,8 @@ class AzusaScriptingPlayer {
       this.player.stop();
       this.player.dispose();
     }
-    if (MediaPlayer) {
-      MediaPlayer.nowPlayingInfo = null;
+    if (MediaPlayerApi) {
+      MediaPlayerApi.nowPlayingInfo = null;
     }
   }
 
@@ -179,14 +187,14 @@ class AzusaScriptingPlayer {
   }
 
   private setupMediaCommands() {
-    if (!MediaPlayer) return;
-    MediaPlayer.setAvailableCommands?.([
+    if (!MediaPlayerApi) return;
+    MediaPlayerApi.setAvailableCommands?.([
       "play",
       "pause",
       "nextTrack",
       "previousTrack",
     ]);
-    MediaPlayer.commandHandler = (command: string) => {
+    MediaPlayerApi.commandHandler = (command: string) => {
       if (command === "play") {
         this.resume();
       } else if (command === "pause") {
@@ -205,7 +213,7 @@ class AzusaScriptingPlayer {
       throw new Error(nativePlayerUnsupportedMessage);
     }
 
-    this.player = new (AVPlayer as any)();
+    this.player = new AVPlayerCtor();
     this.player.onTimeControlStatusChanged = (status: any) => {
       this.emitState(mapStatus(status));
       this.updateNowPlaying();
@@ -238,11 +246,11 @@ class AzusaScriptingPlayer {
   }
 
   private updateNowPlaying() {
-    if (!this.player || !MediaPlayer) return;
+    if (!this.player || !MediaPlayerApi) return;
     const currentTrack = this.getCurrentTrack();
     if (!currentTrack) return;
 
-    MediaPlayer.nowPlayingInfo = {
+    MediaPlayerApi.nowPlayingInfo = {
       title: currentTrack.title,
       artist: currentTrack.artist,
       albumTitle: currentTrack.sourceTitle,
@@ -250,7 +258,7 @@ class AzusaScriptingPlayer {
       playbackDuration:
         this.player.duration || currentTrack.durationSeconds || 0,
       playbackRate:
-        this.player.timeControlStatus === TimeControlStatus?.playing ? 1.0 : 0.0,
+        this.player.timeControlStatus === TimeControlStatusApi?.playing ? 1.0 : 0.0,
     };
   }
 }
