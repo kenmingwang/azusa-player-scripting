@@ -1,10 +1,10 @@
 import { Navigation, Script } from "scripting";
 
-import { AzusaPoCApp } from "./lib/app";
+import { DefaultPlaylistApp } from "./lib/defaultPlaylistApp";
 
 async function run() {
   await Navigation.present({
-    element: <AzusaPoCApp />,
+    element: <DefaultPlaylistApp />,
   });
 
   Script.exit();

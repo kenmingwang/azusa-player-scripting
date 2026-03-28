@@ -31,8 +31,13 @@
 2. 直接用 GitHub 导入本仓库，或新建一个 Script Project 后手动导入文件。
 3. `Scripting` 的 GitHub 导入器通常会读取仓库根目录的 `script.json`。
 4. 运行 `index.tsx`。
-5. 输入一个 `BV` 号或 bilibili 视频链接。
-6. 导入完成后，点击任意分P开始播放。
+5. 运行后会先自动请求 Azusa 默认歌单。
+6. 页面会把默认歌单的分P列表显示出来。
+
+当前 `index.tsx` 已经缩到最小，只验证两件事：
+
+1. 能不能在 Scripting 里正常发出 Bilibili 请求
+2. 能不能把默认歌单列表渲染出来
 
 如果运行主入口时直接报 `AVPlayer` 相关错误，先单独运行 `diagnose.tsx`：
 
