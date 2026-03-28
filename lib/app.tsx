@@ -18,7 +18,7 @@ import {
 } from "scripting";
 
 import { importFromInput, requestHeaders } from "./api";
-import { getSharedPlayer } from "./player";
+import { getNativePlayerCompatibilityMessage, getSharedPlayer } from "./player";
 import { attachDownloadedPaths, loadState, rememberDownload, saveState } from "./storage";
 import type { PlaybackUiState, Track } from "./types";
 
@@ -44,6 +44,10 @@ export function AzusaPoCApp({
 }: AzusaPoCAppProps) {
   const persisted = useMemo(() => loadState(), []);
   const player = useMemo(() => getSharedPlayer(), []);
+  const nativePlayerCompatibilityMessage = useMemo(
+    () => getNativePlayerCompatibilityMessage(),
+    [],
+  );
 
   const [input, setInput] = useState(initialInput ?? persisted.lastInput ?? "");
   const [sourceTitle, setSourceTitle] = useState(persisted.sourceTitle ?? "");
@@ -233,6 +237,9 @@ export function AzusaPoCApp({
             </VStack>
           }
         >
+          {nativePlayerCompatibilityMessage ? (
+            <Text>{nativePlayerCompatibilityMessage}</Text>
+          ) : null}
           <TextField
             title="BV / 链接"
             value={input}

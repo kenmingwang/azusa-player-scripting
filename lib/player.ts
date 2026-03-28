@@ -16,20 +16,25 @@ type PlayerBindings = {
   onError?: (message: string) => void;
 };
 
+const nativePlayerUnsupportedMessage =
+  "当前 Scripting 版本没有可用的 AVPlayer。请先把 Scripting 更新到支持 Audio Player API 的版本，再重新导入这个项目。";
+
+const hasNativeAudioPlayer = () => typeof (AVPlayer as any) === "function";
+
 const mapStatus = (status: any): PlaybackUiState => {
   switch (status) {
-    case TimeControlStatus.playing:
+    case TimeControlStatus?.playing:
       return "playing";
-    case TimeControlStatus.waitingToPlayAtSpecifiedRate:
+    case TimeControlStatus?.waitingToPlayAtSpecifiedRate:
       return "loading";
-    case TimeControlStatus.paused:
+    case TimeControlStatus?.paused:
     default:
       return "paused";
   }
 };
 
 class AzusaScriptingPlayer {
-  private readonly player = new AVPlayer();
+  private player: any | null = null;
   private queue: Track[] = [];
   private currentIndex = -1;
   private bindings: PlayerBindings = {};
@@ -37,37 +42,7 @@ class AzusaScriptingPlayer {
   private loadToken = 0;
 
   constructor() {
-    this.player.onTimeControlStatusChanged = (status) => {
-      this.emitState(mapStatus(status));
-      this.updateNowPlaying();
-    };
-
-    this.player.onEnded = () => {
-      void this.skip(1);
-    };
-
-    this.player.onError = (message) => {
-      this.emitState("error", message);
-      this.bindings.onError?.(message);
-    };
-
-    MediaPlayer.setAvailableCommands([
-      "play",
-      "pause",
-      "nextTrack",
-      "previousTrack",
-    ]);
-    MediaPlayer.commandHandler = (command) => {
-      if (command === "play") {
-        this.resume();
-      } else if (command === "pause") {
-        this.pause();
-      } else if (command === "nextTrack") {
-        void this.skip(1);
-      } else if (command === "previousTrack") {
-        void this.skip(-1);
-      }
-    };
+    this.setupMediaCommands();
   }
 
   bind(bindings: PlayerBindings) {
@@ -91,14 +66,16 @@ class AzusaScriptingPlayer {
   }
 
   getCurrentTime() {
-    return this.player.currentTime ?? 0;
+    return this.player?.currentTime ?? 0;
   }
 
   getDuration() {
-    return this.player.duration ?? 0;
+    return this.player?.duration ?? 0;
   }
 
   async playIndex(index: number) {
+    this.ensurePlayer();
+
     if (index < 0 || index >= this.queue.length) {
       return;
     }
@@ -123,15 +100,15 @@ class AzusaScriptingPlayer {
         ? track.localFilePath
         : track.streamUrl!;
 
-    this.player.stop();
-    const ready = this.player.setSource(source);
+    this.player!.stop();
+    const ready = this.player!.setSource(source);
     if (!ready) {
       throw new Error("播放器无法装载音频源");
     }
 
-    this.player.onReadyToPlay = () => {
+    this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
-      this.player.play();
+      this.player!.play();
       this.startTicker();
       this.updateNowPlaying();
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
@@ -139,11 +116,16 @@ class AzusaScriptingPlayer {
   }
 
   pause() {
+    if (!this.player) return;
     this.player.pause();
     this.updateNowPlaying();
   }
 
   resume() {
+    if (!this.player) {
+      this.bindings.onError?.(nativePlayerUnsupportedMessage);
+      return;
+    }
     if (!this.getCurrentTrack()) return;
     this.player.play();
     this.startTicker();
@@ -151,7 +133,11 @@ class AzusaScriptingPlayer {
   }
 
   toggle() {
-    if (this.player.timeControlStatus === TimeControlStatus.playing) {
+    if (!this.player) {
+      this.bindings.onError?.(nativePlayerUnsupportedMessage);
+      return;
+    }
+    if (this.player.timeControlStatus === TimeControlStatus?.playing) {
       this.pause();
     } else {
       this.resume();
@@ -168,21 +154,73 @@ class AzusaScriptingPlayer {
   }
 
   stop() {
+    if (!this.player) return;
     this.player.stop();
     this.stopTicker();
     this.emitState("paused");
-    MediaPlayer.nowPlayingInfo = null;
+    if (MediaPlayer) {
+      MediaPlayer.nowPlayingInfo = null;
+    }
   }
 
   dispose() {
     this.stopTicker();
-    this.player.stop();
-    this.player.dispose();
-    MediaPlayer.nowPlayingInfo = null;
+    if (this.player) {
+      this.player.stop();
+      this.player.dispose();
+    }
+    if (MediaPlayer) {
+      MediaPlayer.nowPlayingInfo = null;
+    }
   }
 
   private emitState(state: PlaybackUiState, detail?: string) {
     this.bindings.onStateChange?.(state, detail);
+  }
+
+  private setupMediaCommands() {
+    if (!MediaPlayer) return;
+    MediaPlayer.setAvailableCommands?.([
+      "play",
+      "pause",
+      "nextTrack",
+      "previousTrack",
+    ]);
+    MediaPlayer.commandHandler = (command: string) => {
+      if (command === "play") {
+        this.resume();
+      } else if (command === "pause") {
+        this.pause();
+      } else if (command === "nextTrack") {
+        void this.skip(1);
+      } else if (command === "previousTrack") {
+        void this.skip(-1);
+      }
+    };
+  }
+
+  private ensurePlayer() {
+    if (this.player) return this.player;
+    if (!hasNativeAudioPlayer()) {
+      throw new Error(nativePlayerUnsupportedMessage);
+    }
+
+    this.player = new (AVPlayer as any)();
+    this.player.onTimeControlStatusChanged = (status: any) => {
+      this.emitState(mapStatus(status));
+      this.updateNowPlaying();
+    };
+
+    this.player.onEnded = () => {
+      void this.skip(1);
+    };
+
+    this.player.onError = (message: string) => {
+      this.emitState("error", message);
+      this.bindings.onError?.(message);
+    };
+
+    return this.player;
   }
 
   private startTicker() {
@@ -200,6 +238,7 @@ class AzusaScriptingPlayer {
   }
 
   private updateNowPlaying() {
+    if (!this.player || !MediaPlayer) return;
     const currentTrack = this.getCurrentTrack();
     if (!currentTrack) return;
 
@@ -211,13 +250,20 @@ class AzusaScriptingPlayer {
       playbackDuration:
         this.player.duration || currentTrack.durationSeconds || 0,
       playbackRate:
-        this.player.timeControlStatus === TimeControlStatus.playing ? 1.0 : 0.0,
+        this.player.timeControlStatus === TimeControlStatus?.playing ? 1.0 : 0.0,
     };
   }
 }
 
-const sharedPlayer = new AzusaScriptingPlayer();
+let sharedPlayer: AzusaScriptingPlayer | null = null;
 
 export function getSharedPlayer() {
+  if (!sharedPlayer) {
+    sharedPlayer = new AzusaScriptingPlayer();
+  }
   return sharedPlayer;
+}
+
+export function getNativePlayerCompatibilityMessage() {
+  return hasNativeAudioPlayer() ? null : nativePlayerUnsupportedMessage;
 }
