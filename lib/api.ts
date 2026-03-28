@@ -59,7 +59,12 @@ function normalizeHttps(url?: string) {
 
 export function parseBvid(input: string) {
   const match = input.match(/BV[0-9A-Za-z]{10}/i);
-  return match?.[0]?.toUpperCase() ?? null;
+  if (!match?.[0]) {
+    return null;
+  }
+
+  const raw = match[0];
+  return `BV${raw.slice(2)}`;
 }
 
 async function fetchJson<T>(url: string, debugLabel: string): Promise<T> {
