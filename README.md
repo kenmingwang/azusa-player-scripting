@@ -34,6 +34,13 @@
 5. 输入一个 `BV` 号或 bilibili 视频链接。
 6. 导入完成后，点击任意分P开始播放。
 
+如果运行主入口时直接报 `AVPlayer` 相关错误，先单独运行 `diagnose.tsx`：
+
+1. 打开 `diagnose.tsx`
+2. 点运行
+3. 看页面里 `typeof AVPlayer` 的值
+4. 如果不是 `function`，说明当前 Scripting 运行时没有把音频播放器 API 暴露出来
+
 如果你想从分享菜单直接导入：
 
 1. 保留 `intent.tsx`
