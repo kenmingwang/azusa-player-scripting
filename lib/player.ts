@@ -53,6 +53,7 @@ class AzusaScriptingPlayer {
   private player: any | null = null;
   private queue: Track[] = [];
   private currentIndex = -1;
+  private loadedTrackId?: string;
   private bindings: PlayerBindings = {};
   private updateTimer?: number;
   private loadToken = 0;
@@ -65,8 +66,21 @@ class AzusaScriptingPlayer {
     this.bindings = bindings;
   }
 
-  setQueue(queue: Track[]) {
+  setQueue(queue: Track[], currentTrackId?: string | null) {
+    const targetTrackId =
+      currentTrackId === undefined ? this.getCurrentTrack()?.id : currentTrackId;
     this.queue = [...queue];
+    const nextIndex = targetTrackId
+      ? this.queue.findIndex((track) => track.id === targetTrackId)
+      : -1;
+
+    if (nextIndex !== this.currentIndex) {
+      this.currentIndex = nextIndex;
+      this.bindings.onCurrentTrackChange?.(
+        nextIndex >= 0 ? this.queue[nextIndex] : null,
+        nextIndex,
+      );
+    }
   }
 
   getQueue() {
@@ -121,6 +135,7 @@ class AzusaScriptingPlayer {
     if (!ready) {
       throw new Error("播放器无法装载音频源");
     }
+    this.loadedTrackId = track.id;
 
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
@@ -137,26 +152,26 @@ class AzusaScriptingPlayer {
     this.updateNowPlaying();
   }
 
-  resume() {
-    if (!this.player) {
-      this.bindings.onError?.(nativePlayerUnsupportedMessage);
+  async resume() {
+    if (!this.getCurrentTrack()) return;
+
+    if (!this.player || this.loadedTrackId !== this.getCurrentTrack()?.id) {
+      if (this.currentIndex >= 0) {
+        await this.playIndex(this.currentIndex);
+      }
       return;
     }
-    if (!this.getCurrentTrack()) return;
+
     this.player.play();
     this.startTicker();
     this.updateNowPlaying();
   }
 
-  toggle() {
-    if (!this.player) {
-      this.bindings.onError?.(nativePlayerUnsupportedMessage);
-      return;
-    }
-    if (this.player.timeControlStatus === TimeControlStatusApi?.playing) {
+  async toggle() {
+    if (this.player?.timeControlStatus === TimeControlStatusApi?.playing) {
       this.pause();
     } else {
-      this.resume();
+      await this.resume();
     }
   }
 
@@ -172,6 +187,7 @@ class AzusaScriptingPlayer {
   stop() {
     if (!this.player) return;
     this.player.stop();
+    this.loadedTrackId = undefined;
     this.stopTicker();
     this.emitState("paused");
     if (MediaPlayerApi) {
@@ -185,6 +201,7 @@ class AzusaScriptingPlayer {
       this.player.stop();
       this.player.dispose();
     }
+    this.loadedTrackId = undefined;
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
@@ -204,7 +221,7 @@ class AzusaScriptingPlayer {
     ]);
     MediaPlayerApi.commandHandler = (command: string) => {
       if (command === "play") {
-        this.resume();
+        void this.resume();
       } else if (command === "pause") {
         this.pause();
       } else if (command === "nextTrack") {

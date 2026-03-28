@@ -1,5 +1,6 @@
 import { attachDownloadedPaths } from "./storage";
-import type { ImportResult, Track } from "./types";
+import { parseSourceInput } from "./sources";
+import type { ImportResult, SourceDescriptor, Track } from "./types";
 
 const BILI_HEADERS = {
   Referer: "https://www.bilibili.com/",
@@ -13,21 +14,116 @@ const VIDEO_INFO_URL =
   "https://api.bilibili.com/x/web-interface/view?bvid={bvid}";
 const PLAY_URL =
   "https://api.bilibili.com/x/player/playurl?cid={cid}&bvid={bvid}&qn=64&fnval=16";
+const FAVORITE_URL =
+  "https://api.bilibili.com/x/v3/fav/resource/list?media_id={mediaId}&pn={page}&ps={pageSize}&platform=web";
+const SERIES_URL =
+  "https://api.bilibili.com/x/series/archives?mid={mid}&series_id={id}&only_normal=true&sort=desc&pn={page}&ps={pageSize}";
+const SEASON_URL =
+  "https://api.bilibili.com/x/polymer/web-space/seasons_archives_list?mid={mid}&season_id={id}&page_num={page}&page_size={pageSize}";
+const CHANNEL_URL =
+  "https://api.bilibili.com/x/space/arc/search?mid={mid}&pn={page}&ps={pageSize}&order=pubdate&jsonp=jsonp";
+
+type VideoInfoData = {
+  bvid: string;
+  title: string;
+  pic?: string;
+  owner: {
+    name: string;
+  };
+  pages: Array<{
+    cid: number;
+    part: string;
+  }>;
+};
 
 type VideoInfoResponse = {
   code: number;
   message?: string;
+  data?: VideoInfoData;
+};
+
+type FavoriteResponse = {
+  code: number;
+  message?: string;
   data?: {
-    bvid: string;
-    title: string;
-    pic?: string;
-    owner: {
-      name: string;
+    info?: {
+      title?: string;
+      cover?: string;
+      upper?: {
+        name?: string;
+      };
+      media_count?: number;
     };
-    pages: Array<{
-      cid: number;
-      part: string;
+    medias?: Array<{
+      bvid?: string;
+      bv_id?: string;
     }>;
+    has_more?: boolean;
+  };
+};
+
+type SeriesResponse = {
+  code: number;
+  message?: string;
+  data?: {
+    meta?: {
+      name?: string;
+      mid?: number;
+      cover?: string;
+      upper?: {
+        name?: string;
+      };
+    };
+    archives?: Array<{
+      bvid?: string;
+      pic?: string;
+      title?: string;
+    }> | null;
+    page?: {
+      num?: number;
+      size?: number;
+      total?: number;
+    };
+  };
+};
+
+type SeasonResponse = {
+  code: number;
+  message?: string;
+  data?: {
+    meta?: {
+      name?: string;
+      mid?: number;
+      cover?: string;
+      upper?: {
+        name?: string;
+      };
+    };
+    archives?: Array<{
+      bvid?: string;
+      pic?: string;
+      title?: string;
+    }> | null;
+  };
+};
+
+type ChannelResponse = {
+  code: number;
+  message?: string;
+  data?: {
+    page?: {
+      count?: number;
+      pn?: number;
+      ps?: number;
+    };
+    list?: {
+      vlist?: Array<{
+        bvid?: string;
+        title?: string;
+        pic?: string;
+        author?: string;
+      }>;
+    };
   };
 };
 
@@ -57,14 +153,15 @@ function normalizeHttps(url?: string) {
   return url.replace(/^http:\/\//i, "https://");
 }
 
-export function parseBvid(input: string) {
-  const match = input.match(/BV[0-9A-Za-z]{10}/i);
-  if (!match?.[0]) {
-    return null;
+function replaceUrlTokens(
+  template: string,
+  tokens: Record<string, string | number>,
+) {
+  let next = template;
+  for (const [key, value] of Object.entries(tokens)) {
+    next = next.replace(`{${key}}`, encodeURIComponent(String(value)));
   }
-
-  const raw = match[0];
-  return `BV${raw.slice(2)}`;
+  return next;
 }
 
 async function fetchJson<T>(url: string, debugLabel: string): Promise<T> {
@@ -81,7 +178,9 @@ async function fetchJson<T>(url: string, debugLabel: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function scoreAudio(audio: NonNullable<PlayUrlResponse["data"]>["dash"]["audio"][number]) {
+function scoreAudio(
+  audio: NonNullable<PlayUrlResponse["data"]>["dash"]["audio"][number],
+) {
   const codec = (audio.codecs ?? "").toLowerCase();
   const mimeType = (audio.mimeType ?? "").toLowerCase();
   const bandwidth = audio.bandwidth ?? 999999;
@@ -98,17 +197,52 @@ function selectPreferredAudio(
   audios: NonNullable<PlayUrlResponse["data"]>["dash"]["audio"] = [],
 ) {
   if (!audios.length) return null;
-  return [...audios].sort((left, right) => scoreAudio(right) - scoreAudio(left))[0];
+  return [...audios].sort(
+    (left, right) => scoreAudio(right) - scoreAudio(left),
+  )[0];
 }
 
-export async function importFromInput(input: string): Promise<ImportResult> {
-  const bvid = parseBvid(input);
-  if (!bvid) {
-    throw new Error("请输入 BV 号或 Bilibili 视频链接");
+function uniq(items: Array<string | null | undefined>) {
+  return [...new Set(items.filter(Boolean) as string[])];
+}
+
+function buildTrackTitle(
+  videoTitle: string,
+  partTitle: string,
+  totalPages: number,
+) {
+  if (totalPages <= 1) {
+    return videoTitle;
   }
 
+  const normalizedPart = partTitle.trim();
+  if (!normalizedPart || normalizedPart === videoTitle) {
+    return videoTitle;
+  }
+
+  return `${videoTitle} · ${normalizedPart}`;
+}
+
+function buildTracksFromVideoData(
+  data: VideoInfoData,
+  sourceTitleOverride?: string,
+) {
+  const sourceTitle = sourceTitleOverride || data.title;
+  const cover = normalizeHttps(data.pic);
+  return data.pages.map((page) => ({
+    id: `${data.bvid}:${page.cid}`,
+    bvid: data.bvid,
+    cid: String(page.cid),
+    title: buildTrackTitle(data.title, page.part || data.title, data.pages.length),
+    artist: data.owner.name,
+    sourceTitle,
+    cover,
+  }));
+}
+
+async function fetchVideoInfo(bvid: string) {
   const response = await fetchJson<VideoInfoResponse>(
-    VIDEO_INFO_URL.replace("{bvid}", bvid),
+    replaceUrlTokens(VIDEO_INFO_URL, { bvid }),
     `VideoInfo ${bvid}`,
   );
 
@@ -116,26 +250,260 @@ export async function importFromInput(input: string): Promise<ImportResult> {
     throw new Error(response.message || "Bilibili 视频信息获取失败");
   }
 
-  const sourceTitle = response.data.title;
-  const ownerName = response.data.owner.name;
-  const tracks = attachDownloadedPaths(
-    response.data.pages.map((page) => ({
-      id: `${response.data!.bvid}:${page.cid}`,
-      bvid: response.data!.bvid,
-      cid: String(page.cid),
-      title: page.part || sourceTitle,
-      artist: ownerName,
-      sourceTitle,
-      cover: normalizeHttps(response.data!.pic),
-    })),
-  );
+  return response.data;
+}
+
+async function fetchPlaylistTracks(
+  bvids: string[],
+  sourceTitle: string,
+): Promise<Track[]> {
+  const uniqueBvids = uniq(bvids);
+  if (!uniqueBvids.length) {
+    return [];
+  }
+
+  const results: Track[][] = new Array(uniqueBvids.length);
+  let nextIndex = 0;
+  const concurrency = Math.min(3, uniqueBvids.length);
+
+  async function worker() {
+    while (nextIndex < uniqueBvids.length) {
+      const currentIndex = nextIndex++;
+      const bvid = uniqueBvids[currentIndex];
+
+      try {
+        const video = await fetchVideoInfo(bvid);
+        results[currentIndex] = buildTracksFromVideoData(video, sourceTitle);
+      } catch {
+        results[currentIndex] = [];
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return attachDownloadedPaths(results.flat());
+}
+
+async function importVideoSource(source: SourceDescriptor): Promise<ImportResult> {
+  const responseData = await fetchVideoInfo((source as any).bvid);
+  const sourceTitle = responseData.title;
+  const ownerName = responseData.owner.name;
 
   return {
+    source: {
+      ...source,
+      titleHint: sourceTitle,
+    },
     sourceTitle,
     ownerName,
-    cover: normalizeHttps(response.data.pic),
+    cover: normalizeHttps(responseData.pic),
+    tracks: attachDownloadedPaths(buildTracksFromVideoData(responseData)),
+  };
+}
+
+async function importFavoriteSource(source: SourceDescriptor): Promise<ImportResult> {
+  const mediaId = (source as any).mediaId;
+  const bvids: string[] = [];
+  let page = 1;
+  let infoTitle = source.titleHint || `收藏夹 ${mediaId}`;
+  let ownerName = "";
+  let cover = "";
+
+  while (page <= 10) {
+    const response = await fetchJson<FavoriteResponse>(
+      replaceUrlTokens(FAVORITE_URL, {
+        mediaId,
+        page,
+        pageSize: 20,
+      }),
+      `Favorite ${mediaId}#${page}`,
+    );
+
+    if (response.code !== 0 || !response.data) {
+      throw new Error(response.message || "收藏夹获取失败");
+    }
+
+    infoTitle = response.data.info?.title || infoTitle;
+    ownerName = response.data.info?.upper?.name || ownerName;
+    cover = normalizeHttps(response.data.info?.cover) || cover;
+    const medias = response.data.medias ?? [];
+    bvids.push(...medias.map((item) => item.bvid || item.bv_id || "").filter(Boolean));
+
+    if (!response.data.has_more || !medias.length) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  const tracks = await fetchPlaylistTracks(bvids, infoTitle);
+  if (!tracks.length) {
+    throw new Error("收藏夹里还没有拿到可播放的视频");
+  }
+
+  return {
+    source: {
+      ...source,
+      titleHint: infoTitle,
+    },
+    sourceTitle: infoTitle,
+    ownerName: ownerName || "Bilibili 收藏夹",
+    cover: cover || tracks[0]?.cover,
     tracks,
   };
+}
+
+async function importCollectionSource(
+  source: SourceDescriptor,
+): Promise<ImportResult> {
+  const collectionSource = source as any;
+  const bvids: string[] = [];
+  let page = 1;
+  let sourceTitle =
+    collectionSource.titleHint ||
+    `${collectionSource.collectionKind === "season" ? "合集" : "系列"} ${collectionSource.collectionId}`;
+  let ownerName = "";
+  let cover = "";
+
+  while (page <= 10) {
+    const response =
+      collectionSource.collectionKind === "season"
+        ? await fetchJson<SeasonResponse>(
+            replaceUrlTokens(SEASON_URL, {
+              mid: collectionSource.ownerMid,
+              id: collectionSource.collectionId,
+              page,
+              pageSize: 20,
+            }),
+            `Season ${collectionSource.collectionId}#${page}`,
+          )
+        : await fetchJson<SeriesResponse>(
+            replaceUrlTokens(SERIES_URL, {
+              mid: collectionSource.ownerMid,
+              id: collectionSource.collectionId,
+              page,
+              pageSize: 20,
+            }),
+            `Series ${collectionSource.collectionId}#${page}`,
+          );
+
+    if (response.code !== 0 || !response.data) {
+      throw new Error(response.message || "合集获取失败");
+    }
+
+    const archives = response.data.archives ?? [];
+    sourceTitle = response.data.meta?.name || sourceTitle;
+    ownerName = response.data.meta?.upper?.name || ownerName;
+    cover = normalizeHttps(response.data.meta?.cover) || cover;
+    bvids.push(...archives.map((item) => item.bvid || "").filter(Boolean));
+
+    if (!archives.length || archives.length < 20) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  const tracks = await fetchPlaylistTracks(bvids, sourceTitle);
+  if (!tracks.length) {
+    throw new Error("这个合集里暂时没有拿到可播放的视频");
+  }
+
+  return {
+    source: {
+      ...source,
+      titleHint: sourceTitle,
+    },
+    sourceTitle,
+    ownerName: ownerName || `UP ${collectionSource.ownerMid}`,
+    cover: cover || tracks[0]?.cover,
+    tracks,
+  };
+}
+
+async function importChannelSource(source: SourceDescriptor): Promise<ImportResult> {
+  const ownerMid = (source as any).ownerMid;
+  const bvids: string[] = [];
+  let page = 1;
+  let sourceTitle = source.titleHint || `频道 ${ownerMid}`;
+  let ownerName = `UP ${ownerMid}`;
+
+  while (page <= 5) {
+    const response = await fetchJson<ChannelResponse>(
+      replaceUrlTokens(CHANNEL_URL, {
+        mid: ownerMid,
+        page,
+        pageSize: 20,
+      }),
+      `Channel ${ownerMid}#${page}`,
+    );
+
+    if (response.code === -799) {
+      throw new Error("Bilibili 频道接口暂时限流了，请稍后再试");
+    }
+
+    if (response.code !== 0 || !response.data) {
+      throw new Error(response.message || "频道获取失败");
+    }
+
+    const videos = response.data.list?.vlist ?? [];
+    if (videos[0]?.author) {
+      ownerName = videos[0].author;
+      sourceTitle = `${ownerName} 的频道`;
+    }
+
+    bvids.push(...videos.map((item) => item.bvid || "").filter(Boolean));
+
+    if (!videos.length || videos.length < 20) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  const tracks = await fetchPlaylistTracks(bvids, sourceTitle);
+  if (!tracks.length) {
+    throw new Error("这个频道里还没有拿到可播放的视频");
+  }
+
+  return {
+    source: {
+      ...source,
+      titleHint: sourceTitle,
+    },
+    sourceTitle,
+    ownerName,
+    cover: tracks[0]?.cover,
+    tracks,
+  };
+}
+
+export async function importFromSource(
+  source: SourceDescriptor,
+): Promise<ImportResult> {
+  switch (source.kind) {
+    case "video":
+      return importVideoSource(source);
+    case "favorite":
+      return importFavoriteSource(source);
+    case "collection":
+      return importCollectionSource(source);
+    case "channel":
+      return importChannelSource(source);
+    default:
+      throw new Error("暂不支持这个来源类型");
+  }
+}
+
+export async function importFromInput(input: string): Promise<ImportResult> {
+  const source = parseSourceInput(input);
+  if (!source) {
+    throw new Error(
+      "请输入 BV / 视频链接，或使用 favorite:mediaId、season:mid:id、series:mid:id、channel:mid 这类来源格式",
+    );
+  }
+
+  return importFromSource(source);
 }
 
 export async function resolveTrackStream(track: Track): Promise<Track> {
@@ -144,7 +512,7 @@ export async function resolveTrackStream(track: Track): Promise<Track> {
   }
 
   const response = await fetchJson<PlayUrlResponse>(
-    PLAY_URL.replace("{cid}", track.cid).replace("{bvid}", track.bvid),
+    replaceUrlTokens(PLAY_URL, { cid: track.cid, bvid: track.bvid }),
     `PlayUrl ${track.bvid}/${track.cid}`,
   );
 

@@ -10,22 +10,59 @@ import {
   Text,
   VStack,
   useEffect,
+  useMemo,
   useState,
 } from "scripting";
 
-import { importFromInput } from "./api";
+import { importFromSource } from "./api";
+import {
+  buildPlaybackSnapshot,
+  reloadExternalSurfaces,
+  toLiveActivityState,
+} from "./externalBridge";
 import {
   getNativePlayerCompatibilityMessage,
   getSharedPlayer,
 } from "./player";
-import { loadState, saveState } from "./storage";
-import type { PlaybackUiState, Track } from "./types";
+import {
+  clearPendingExternalCommand,
+  loadState,
+  persistPlayerState,
+  rememberRecentSource,
+} from "./storage";
+import {
+  createVideoSource,
+  isSameSource,
+  parseSourceInput,
+  sourceKindLabel,
+  sourceSecondaryLabel,
+  sourceShortLabel,
+} from "./sources";
+import type {
+  PendingExternalCommand,
+  PlaybackUiState,
+  SourceDescriptor,
+  Track,
+} from "./types";
+import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
-const DEFAULT_BVID = "BV1wr4y1v7TA";
+const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
+
+const globalRuntime = globalThis as any;
+const setIntervalApi =
+  typeof globalRuntime.setInterval === "function"
+    ? globalRuntime.setInterval.bind(globalRuntime)
+    : null;
+const clearIntervalApi =
+  typeof globalRuntime.clearInterval === "function"
+    ? globalRuntime.clearInterval.bind(globalRuntime)
+    : null;
 
 type DefaultPlaylistAppProps = {
   initialInput?: string;
 };
+
+type SourcePromptKind = SourceDescriptor["kind"];
 
 function describeState(state: PlaybackUiState, detail?: string) {
   if (detail) return detail;
@@ -60,17 +97,68 @@ function trackStatusLabel(
   return "当前";
 }
 
-function sourceSummary(input: string) {
-  if (input.startsWith("BV")) return input;
-  return input.replace(/^https?:\/\//, "");
+function promptMeta(kind: SourcePromptKind) {
+  switch (kind) {
+    case "video":
+      return {
+        title: "导入视频",
+        message: "输入 BV 号或 Bilibili 视频链接。",
+        placeholder: "例如 BV1wr4y1v7TA",
+      };
+    case "favorite":
+      return {
+        title: "导入收藏夹",
+        message: "输入 favorite:media_id，或直接贴 ml 开头的收藏夹链接。",
+        placeholder: "例如 favorite:69072721 或 ml69072721",
+      };
+    case "collection":
+      return {
+        title: "导入合集",
+        message: "支持 season:mid:id、series:mid:id，或对应的 space 链接。",
+        placeholder: "例如 season:8251621:6203453",
+      };
+    case "channel":
+      return {
+        title: "导入频道",
+        message: "输入 channel:mid，或直接贴 UP 主页链接。",
+        placeholder: "例如 channel:8251621",
+      };
+    default:
+      return {
+        title: "导入来源",
+        message: "输入一个来源标识。",
+        placeholder: "",
+      };
+  }
+}
+
+function commandLabel(command: PendingExternalCommand["type"]) {
+  switch (command) {
+    case "playPause":
+      return "播放 / 暂停";
+    case "next":
+      return "下一首";
+    case "previous":
+      return "上一首";
+    case "openSource":
+      return "打开来源";
+    case "openApp":
+      return "打开 Azusa";
+    default:
+      return command;
+  }
 }
 
 export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const persistedState = loadState();
-  const requestedInput = props.initialInput?.trim();
-  const canRestoreQueue =
-    !requestedInput || requestedInput === persistedState.lastInput;
-  const initialInput = requestedInput || persistedState.lastInput || DEFAULT_BVID;
+  const requestedInput = props.initialInput?.trim() || "";
+  const requestedSource = requestedInput ? parseSourceInput(requestedInput) : null;
+  const storedSource =
+    persistedState.sourceDescriptor ||
+    (persistedState.lastInput ? parseSourceInput(persistedState.lastInput) : null) ||
+    DEFAULT_SOURCE;
+  const initialSource = requestedSource || storedSource;
+  const canRestoreQueue = !requestedSource || isSameSource(requestedSource, storedSource);
   const initialTracks = canRestoreQueue ? persistedState.queue : [];
   const initialCurrentIndex =
     canRestoreQueue && persistedState.currentTrackId
@@ -78,48 +166,89 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       : -1;
   const initialCurrentTrack =
     initialCurrentIndex >= 0 ? initialTracks[initialCurrentIndex] : null;
+  const initialSnapshot = canRestoreQueue ? persistedState.playbackSnapshot : null;
+  const initialInputError =
+    requestedInput && !requestedSource
+      ? "这个来源格式暂时没识别出来，请改成 BV / 视频链接，或 favorite:mediaId、season:mid:id、series:mid:id、channel:mid"
+      : "";
 
   const player = getSharedPlayer();
-  const [activeInput, setActiveInput] = useState(initialInput);
+  const commandBridge = useMemo(
+    () => ({
+      busy: false,
+      lastHandledId: "",
+    }),
+    [],
+  );
+  const liveActivity = useMemo(() => {
+    try {
+      return AzusaNowPlayingLiveActivity();
+    } catch {
+      return null;
+    }
+  }, []);
+  const liveActivityBridge = useMemo(
+    () => ({
+      started: false,
+      lastKey: "",
+    }),
+    [],
+  );
+
+  const [activeSource, setActiveSource] = useState(initialSource);
   const [loading, setLoading] = useState(false);
   const [playLoading, setPlayLoading] = useState(false);
   const [error, setError] = useState(null as string | null);
   const [sourceTitle, setSourceTitle] = useState(
-    persistedState.sourceTitle || "Azusa Player",
+    initialSnapshot?.sourceTitle || initialSource.titleHint || "Azusa",
   );
-  const [ownerName, setOwnerName] = useState("");
+  const [ownerName, setOwnerName] = useState(initialSnapshot?.ownerName || "");
+  const [sourceCover, setSourceCover] = useState(initialSnapshot?.cover || "");
   const [tracks, setTracks] = useState(initialTracks);
+  const [recentSources, setRecentSources] = useState(
+    persistedState.recentSources ?? [],
+  );
   const [playbackState, setPlaybackState] = useState("idle" as PlaybackUiState);
   const [playbackDetail, setPlaybackDetail] = useState("");
   const [currentIndex, setCurrentIndex] = useState(initialCurrentIndex);
   const [currentTrack, setCurrentTrack] = useState(initialCurrentTrack as Track | null);
   const [playerMessage] = useState(getNativePlayerCompatibilityMessage());
 
-  async function loadPlaylist(nextInput?: string) {
-    const normalizedInput = nextInput?.trim() || activeInput || DEFAULT_BVID;
-    const isChangingSource = normalizedInput !== activeInput;
+  async function loadSource(nextSource?: SourceDescriptor) {
+    const source = nextSource || activeSource || DEFAULT_SOURCE;
+    const changingSource = !isSameSource(source, activeSource);
 
     setLoading(true);
     setError(null);
 
     try {
-      const result = await importFromInput(normalizedInput);
-      const matchedTrackId = isChangingSource ? undefined : currentTrack?.id;
+      const result = await importFromSource(source);
+      const matchedTrackId = changingSource ? undefined : currentTrack?.id;
       const matchedIndex = matchedTrackId
         ? result.tracks.findIndex((track) => track.id === matchedTrackId)
         : -1;
 
-      if (isChangingSource) {
+      if (changingSource) {
         player.stop();
       }
 
-      setActiveInput(normalizedInput);
+      setActiveSource(result.source);
       setSourceTitle(result.sourceTitle);
       setOwnerName(result.ownerName);
+      setSourceCover(result.cover || "");
       setTracks(result.tracks);
       setCurrentIndex(matchedIndex);
       setCurrentTrack(matchedIndex >= 0 ? result.tracks[matchedIndex] : null);
-      player.setQueue(result.tracks);
+      setRecentSources((current) => {
+        const next = [
+          result.source,
+          ...current.filter((item) => item.input !== result.source.input),
+        ].slice(0, 8);
+        return next;
+      });
+
+      rememberRecentSource(result.source);
+      player.setQueue(result.tracks, matchedTrackId ?? null);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : String(fetchError));
     } finally {
@@ -127,12 +256,14 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
   }
 
-  async function promptImport() {
+  async function promptForSource(kind: SourcePromptKind) {
+    const meta = promptMeta(kind);
+    const defaultValue = activeSource.kind === kind ? activeSource.input : "";
     const nextInput = await Dialog.prompt({
-      title: "导入 BV / 链接",
-      message: "输入 Bilibili BV 号或完整视频链接。",
-      defaultValue: activeInput,
-      placeholder: "例如 BV1wr4y1v7TA",
+      title: meta.title,
+      message: meta.message,
+      defaultValue,
+      placeholder: meta.placeholder,
       confirmLabel: "导入",
       cancelLabel: "取消",
       selectAll: true,
@@ -142,29 +273,38 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       return;
     }
 
-    const trimmed = nextInput.trim();
-    if (!trimmed) {
-      setError("请输入 BV 号或 Bilibili 链接");
+    const source = parseSourceInput(nextInput.trim());
+    if (!source || source.kind !== kind) {
+      setError(`这个输入不是有效的${sourceKindLabel(kind)}来源`);
       return;
     }
 
-    await loadPlaylist(trimmed);
+    await loadSource(source);
   }
 
   async function openSourceActions() {
     const selection = await Dialog.actionSheet({
-      title: "选择来源",
-      message: "你可以导入新的 BV / 链接，或切回默认歌单。",
+      title: "切换来源",
+      message: "现在可以直接导入视频、收藏夹、合集和频道。",
       actions: [
-        { label: "输入 BV / 链接" },
+        { label: "导入视频 / BV" },
+        { label: "导入收藏夹" },
+        { label: "导入合集" },
+        { label: "导入频道" },
         { label: "切回默认歌单" },
       ],
     });
 
     if (selection === 0) {
-      await promptImport();
+      await promptForSource("video");
     } else if (selection === 1) {
-      await loadPlaylist(DEFAULT_BVID);
+      await promptForSource("favorite");
+    } else if (selection === 2) {
+      await promptForSource("collection");
+    } else if (selection === 3) {
+      await promptForSource("channel");
+    } else if (selection === 4) {
+      await loadSource(DEFAULT_SOURCE);
     }
   }
 
@@ -206,9 +346,47 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
 
     try {
-      player.toggle();
+      await player.toggle();
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : String(toggleError));
+    }
+  }
+
+  async function processPendingCommand() {
+    if (commandBridge.busy || loading || playLoading) {
+      return;
+    }
+
+    const pending = loadState().pendingExternalCommand;
+    if (!pending || commandBridge.lastHandledId === pending.id) {
+      return;
+    }
+
+    commandBridge.busy = true;
+
+    try {
+      setError(null);
+
+      if (pending.type === "playPause") {
+        await handlePrimaryAction();
+      } else if (pending.type === "next") {
+        await skipBy(1);
+      } else if (pending.type === "previous") {
+        await skipBy(-1);
+      } else if (pending.type === "openSource" && pending.source) {
+        await loadSource(pending.source);
+      }
+
+      commandBridge.lastHandledId = pending.id;
+      clearPendingExternalCommand(pending.id);
+    } catch (commandError) {
+      setError(
+        commandError instanceof Error ? commandError.message : String(commandError),
+      );
+      commandBridge.lastHandledId = pending.id;
+      clearPendingExternalCommand(pending.id);
+    } finally {
+      commandBridge.busy = false;
     }
   }
 
@@ -231,10 +409,15 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     });
 
     if (initialTracks.length > 0) {
-      player.setQueue(initialTracks);
+      player.setQueue(initialTracks, persistedState.currentTrackId ?? null);
     }
 
-    void loadPlaylist(initialInput);
+    if (initialInputError) {
+      setError(initialInputError);
+    }
+
+    void loadSource(initialSource);
+    void processPendingCommand();
 
     return () => {
       player.bind({});
@@ -242,13 +425,126 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   }, []);
 
   useEffect(() => {
-    saveState({
-      lastInput: activeInput,
+    if (!setIntervalApi) {
+      return;
+    }
+
+    const timer = setIntervalApi(() => {
+      void processPendingCommand();
+    }, 1200) as unknown as number;
+
+    return () => {
+      if (clearIntervalApi) {
+        clearIntervalApi(timer);
+      }
+    };
+  }, [activeSource.input, tracks.length, currentTrack?.id, loading, playLoading]);
+
+  const playbackSnapshot = useMemo(
+    () =>
+      buildPlaybackSnapshot({
+        source: activeSource,
+        sourceTitle,
+        ownerName,
+        cover: sourceCover,
+        queue: tracks,
+        currentIndex,
+        currentTrack,
+        playbackState,
+        playbackDetail,
+      }),
+    [
+      activeSource.input,
+      sourceTitle,
+      ownerName,
+      sourceCover,
+      tracks,
+      currentIndex,
+      currentTrack?.id,
+      playbackState,
+      playbackDetail,
+    ],
+  );
+
+  useEffect(() => {
+    persistPlayerState({
+      sourceDescriptor: activeSource,
       sourceTitle,
       queue: tracks,
       currentTrackId: currentTrack?.id,
+      playbackSnapshot,
     });
-  }, [activeInput, sourceTitle, tracks, currentTrack?.id]);
+    reloadExternalSurfaces();
+  }, [
+    activeSource.input,
+    sourceTitle,
+    ownerName,
+    sourceCover,
+    tracks,
+    currentTrack?.id,
+    currentIndex,
+    playbackState,
+    playbackDetail,
+  ]);
+
+  useEffect(() => {
+    if (!liveActivity) {
+      return;
+    }
+
+    const nextState = toLiveActivityState(playbackSnapshot);
+    const nextKey = JSON.stringify(nextState ?? null);
+    if (nextKey === liveActivityBridge.lastKey) {
+      return;
+    }
+
+    liveActivityBridge.lastKey = nextKey;
+
+    if (!nextState) {
+      if (liveActivityBridge.started) {
+        void liveActivity.end(
+          {
+            title: "",
+            artist: "",
+            sourceTitle: "",
+            playbackState: "idle",
+            queueLength: 0,
+            currentIndex: -1,
+          },
+          { dismissTimeInterval: 0 },
+        );
+        liveActivityBridge.started = false;
+      }
+      return;
+    }
+
+    if (!liveActivityBridge.started) {
+      void liveActivity
+        .start(nextState, {
+          staleDate: Date.now() + 1000 * 60 * 30,
+          relevanceScore: 100,
+        })
+        .then((started: boolean) => {
+          liveActivityBridge.started = Boolean(started);
+          if (!started) {
+            void liveActivity.update(nextState, {
+              staleDate: Date.now() + 1000 * 60 * 30,
+            });
+          }
+        });
+      return;
+    }
+
+    void liveActivity.update(nextState, {
+      staleDate: Date.now() + 1000 * 60 * 30,
+    });
+  }, [
+    playbackSnapshot.updatedAt,
+    playbackSnapshot.currentTrack?.id,
+    playbackSnapshot.playbackState,
+    playbackSnapshot.currentIndex,
+    playbackSnapshot.queueLength,
+  ]);
 
   const playbackLabel = describeState(playbackState, playbackDetail);
   const queueSummary = loading ? "正在同步歌单..." : `共 ${tracks.length} 首`;
@@ -257,6 +553,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       ? "暂停"
       : "继续播放"
     : "播放第 1 首";
+  const currentSourceSummary = sourceSecondaryLabel(activeSource);
+  const currentSourceKind = sourceKindLabel(activeSource.kind);
+  const visibleRecentSources = recentSources.filter(
+    (source) => source.input !== activeSource.input,
+  );
+  const pendingCommand = loadState().pendingExternalCommand;
 
   return (
     <NavigationStack>
@@ -276,7 +578,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 {currentTrack?.title || sourceTitle}
               </Text>
               <Text font={"subheadline"} foregroundColor={"secondary"}>
-                {ownerName ? `UP · ${ownerName}` : "Bilibili 导入播放器"}
+                {currentTrack?.artist || ownerName || "Bilibili 导入播放器"}
               </Text>
               <Text font={"caption"} foregroundColor={"secondary"}>
                 {playbackLabel}
@@ -287,7 +589,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
           <VStack alignment={"leading"} spacing={6}>
             <Text font={"headline"}>{sourceTitle}</Text>
             <Text font={"subheadline"} foregroundColor={"secondary"}>
-              {sourceSummary(activeInput)}
+              {currentSourceKind} · {currentSourceSummary}
             </Text>
             <Text font={"caption"} foregroundColor={"secondary"}>
               {queueSummary}
@@ -317,6 +619,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               {playerMessage}
             </Text>
           ) : null}
+          {pendingCommand ? (
+            <Text font={"caption"} foregroundColor={"systemBlue"}>
+              外部命令待处理: {commandLabel(pendingCommand.type)}
+            </Text>
+          ) : null}
           {error ? (
             <Text font={"caption"} foregroundColor={"systemRed"}>
               {error}
@@ -325,15 +632,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         </Section>
 
         <Section header={<Text font={"caption"}>来源</Text>}>
-          <HStack>
-            <VStack alignment={"leading"} spacing={3}>
-              <Text font={"headline"}>当前输入</Text>
-              <Text font={"subheadline"} foregroundColor={"secondary"}>
-                {activeInput}
-              </Text>
-            </VStack>
-            <Spacer />
-          </HStack>
+          <VStack alignment={"leading"} spacing={4}>
+            <Text font={"headline"}>{sourceShortLabel(activeSource)}</Text>
+            <Text font={"subheadline"} foregroundColor={"secondary"}>
+              {currentSourceKind} · {currentSourceSummary}
+            </Text>
+          </VStack>
 
           <HStack spacing={10}>
             <Button
@@ -344,9 +648,35 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             <Button
               title={loading ? "刷新中..." : "重新拉取"}
               buttonStyle="bordered"
-              action={() => void loadPlaylist()}
+              action={() => void loadSource()}
             />
           </HStack>
+
+          {visibleRecentSources.length > 0 ? (
+            <VStack alignment={"leading"} spacing={6}>
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                最近来源
+              </Text>
+              {visibleRecentSources.slice(0, 5).map((source) => (
+                <Button
+                  action={() => void loadSource(source)}
+                  key={source.input}>
+                  <HStack spacing={12}>
+                    <VStack alignment={"leading"} spacing={3}>
+                      <Text font={"body"}>{sourceShortLabel(source)}</Text>
+                      <Text font={"caption"} foregroundColor={"secondary"}>
+                        {sourceKindLabel(source.kind)} · {sourceSecondaryLabel(source)}
+                      </Text>
+                    </VStack>
+                    <Spacer />
+                    <Text font={"caption"} foregroundColor={"systemBlue"}>
+                      打开
+                    </Text>
+                  </HStack>
+                </Button>
+              ))}
+            </VStack>
+          ) : null}
         </Section>
 
         <Section header={<Text font={"caption"}>播放队列</Text>}>
@@ -354,17 +684,14 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             <VStack alignment={"leading"} spacing={4}>
               <Text font={"headline"}>还没有歌单</Text>
               <Text font={"subheadline"} foregroundColor={"secondary"}>
-                先导入一个 BV 或视频链接，我们就能把完整队列拉下来。
+                现在支持视频、收藏夹、合集和频道四种来源。
               </Text>
             </VStack>
           ) : (
             tracks.map((track: Track, index: number) => {
               const isActive = currentIndex === index;
               return (
-                <Button
-                  action={() => void playTrackAt(index)}
-                  key={track.id}
-                >
+                <Button action={() => void playTrackAt(index)} key={track.id}>
                   <HStack spacing={12}>
                     <VStack alignment={"leading"} spacing={4}>
                       <Text font={isActive ? "headline" : "body"}>
@@ -377,8 +704,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                     <Spacer />
                     <Text
                       font={"caption"}
-                      foregroundColor={isActive ? "systemBlue" : "secondary"}
-                    >
+                      foregroundColor={isActive ? "systemBlue" : "secondary"}>
                       {trackStatusLabel(playbackState, isActive, playLoading)}
                     </Text>
                   </HStack>
