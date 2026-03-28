@@ -61,22 +61,22 @@ export function AzusaPoCApp({
   const [loading, setLoading] = useState(false);
   const [downloadTrackId, setDownloadTrackId] = useState(null as string | null);
 
-  const currentTrack = queue.find((track) => track.id === currentTrackId);
-  const currentIndex = queue.findIndex((track) => track.id === currentTrackId);
+  const currentTrack = queue.find((track: Track) => track.id === currentTrackId);
+  const currentIndex = queue.findIndex((track: Track) => track.id === currentTrackId);
 
   useEffect(() => {
     player.bind({
-      onQueueChange: (nextQueue) => {
+      onQueueChange: (nextQueue: Track[]) => {
         setQueue([...nextQueue]);
       },
-      onCurrentTrackChange: (track) => {
+      onCurrentTrackChange: (track: Track | null) => {
         setCurrentTrackId(track?.id);
       },
-      onStateChange: (nextState, detail) => {
+      onStateChange: (nextState: PlaybackUiState, detail?: string) => {
         setPlayerState(nextState);
         if (detail) setStatus(detail);
       },
-      onError: (message) => {
+      onError: (message: string) => {
         setError(message);
         setStatus("播放失败");
       },
@@ -152,11 +152,11 @@ export function AzusaPoCApp({
       setDownloadTrackId(track.id);
       setStatus(`正在准备下载 ${track.title}`);
 
-      const playReadyTrack = queue.find((item) => item.id === track.id) ?? track;
+      const playReadyTrack = queue.find((item: Track) => item.id === track.id) ?? track;
       const resolvedTrack =
         playReadyTrack.streamUrl || playReadyTrack.localFilePath
           ? playReadyTrack
-          : player.getQueue().find((item) => item.id === track.id) ?? playReadyTrack;
+          : player.getQueue().find((item: Track) => item.id === track.id) ?? playReadyTrack;
 
       const sourceURL = resolvedTrack.streamUrl;
       if (!sourceURL) {
@@ -179,7 +179,10 @@ export function AzusaPoCApp({
         },
       });
 
-      task.onFinishDownload = (downloadError, info) => {
+      task.onFinishDownload = (
+        downloadError: unknown,
+        info: { destination?: string },
+      ) => {
         setDownloadTrackId(null);
         if (downloadError || !info.destination) {
           setStatus(`下载失败: ${String(downloadError)}`);
@@ -187,8 +190,8 @@ export function AzusaPoCApp({
         }
 
         rememberDownload(track.id, info.destination);
-        setQueue((prev) =>
-          prev.map((item) =>
+        setQueue((prev: Track[]) =>
+          prev.map((item: Track) =>
             item.id === track.id ? { ...item, localFilePath: info.destination } : item,
           ),
         );
@@ -301,7 +304,7 @@ export function AzusaPoCApp({
           {queue.length === 0 ? (
             <Text>导入后会在这里看到分P列表。</Text>
           ) : (
-            queue.map((track, index) => (
+            queue.map((track: Track, index: number) => (
               <VStack alignment="leading" key={track.id}>
                 <Button
                   title={`${index === currentIndex ? "▶ " : ""}${index + 1}. ${track.title}`}
