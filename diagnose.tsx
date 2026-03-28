@@ -28,6 +28,7 @@ const runtimeChecks: RuntimeCheck[] = [
   ["typeof imported BackgroundURLSession", () => typeof BackgroundURLSession],
   ["typeof global BackgroundURLSession", () => typeof globalRuntime.BackgroundURLSession],
   ["typeof imported Storage", () => typeof Storage],
+  ["typeof global Storage", () => typeof globalRuntime.Storage],
   ["typeof imported Intent", () => typeof Intent],
 ];
 

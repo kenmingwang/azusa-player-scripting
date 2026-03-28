@@ -12,16 +12,41 @@ const defaultState: PersistedState = {
   queue: [],
 };
 
+const globalRuntime = globalThis as any;
+const storageApi = (Storage as any) ?? globalRuntime.Storage;
+const memoryStore = new Map<string, unknown>();
+
+function safeGet<T>(key: string): T | null {
+  try {
+    if (storageApi?.get) {
+      return (storageApi.get(key) as T | null) ?? null;
+    }
+  } catch {}
+
+  return (memoryStore.get(key) as T | null) ?? null;
+}
+
+function safeSet<T>(key: string, value: T) {
+  try {
+    if (storageApi?.set) {
+      storageApi.set(key, value);
+      return;
+    }
+  } catch {}
+
+  memoryStore.set(key, value);
+}
+
 export function loadState(): PersistedState {
-  return (Storage.get(STATE_KEY) as PersistedState | null) ?? defaultState;
+  return safeGet<PersistedState>(STATE_KEY) ?? defaultState;
 }
 
 export function saveState(nextState: PersistedState) {
-  Storage.set(STATE_KEY, nextState);
+  safeSet(STATE_KEY, nextState);
 }
 
 export function loadDownloads(): DownloadIndex {
-  return (Storage.get(DOWNLOADS_KEY) as DownloadIndex | null) ?? {};
+  return safeGet<DownloadIndex>(DOWNLOADS_KEY) ?? {};
 }
 
 export function attachDownloadedPaths(tracks: Track[]) {
@@ -35,5 +60,5 @@ export function attachDownloadedPaths(tracks: Track[]) {
 export function rememberDownload(trackId: string, localFilePath: string) {
   const current = loadDownloads();
   current[trackId] = localFilePath;
-  Storage.set(DOWNLOADS_KEY, current);
+  safeSet(DOWNLOADS_KEY, current);
 }
