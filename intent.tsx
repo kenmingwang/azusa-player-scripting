@@ -1,6 +1,6 @@
 import { Intent, Navigation, Script } from "scripting";
 
-import { AzusaPoCApp } from "./lib/app";
+import { DefaultPlaylistApp } from "./lib/defaultPlaylistApp";
 
 function resolveIntentInput() {
   return (
@@ -13,15 +13,10 @@ function resolveIntentInput() {
 }
 
 async function run() {
-  const initialInput = resolveIntentInput();
+  resolveIntentInput();
 
   await Navigation.present({
-    element: (
-      <AzusaPoCApp
-        initialInput={initialInput}
-        autoImport={Boolean(initialInput)}
-      />
-    ),
+    element: <DefaultPlaylistApp />,
   });
 
   Script.exit();
