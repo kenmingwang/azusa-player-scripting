@@ -1,0 +1,31 @@
+{
+  "name": "Azusa Player Scripting",
+  "localizedNames": {
+    "en": "Azusa Player Scripting",
+    "zh": "Azusa 播放器 Scripting"
+  },
+  "description": "Azusa Player client prototype built for the Scripting app on iPhone.",
+  "localizedDescriptions": {
+    "en": "An Azusa Player client prototype for Scripting on iPhone, focused on Bilibili import and playback.",
+    "zh": "一个运行在 Scripting 上的 Azusa Player iPhone 原型，先验证 Bilibili 导入和播放链路。"
+  },
+  "author": {
+    "name": "Ken Wang",
+    "email": "kenmingwang1234@gmail.com",
+    "homepage": "https://github.com/kenmingwang"
+  },
+  "contributors": [],
+  "version": "0.1.0",
+  "color": "orange",
+  "icon": "music.note.list",
+  "intentInputTypes": [
+    "texts",
+    "urls"
+  ],
+  "remoteResource": {
+    "url": "https://github.com/kenmingwang/azusa-player-scripting",
+    "hash": "67f9e7d00fb50d1d3c435a9628c8c48e",
+    "autoUpdateInterval": null
+  },
+  "runInApp": true
+}

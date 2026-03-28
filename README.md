@@ -28,8 +28,8 @@
 ## 快速开始
 
 1. 在 iPhone 上安装并打开 `Scripting`。
-2. 新建一个 Script Project。
-3. 把本仓库文件按目录结构导入到项目里。
+2. 直接用 GitHub 导入本仓库，或新建一个 Script Project 后手动导入文件。
+3. `Scripting` 的 GitHub 导入器通常会读取仓库根目录的 `script.json`。
 4. 运行 `index.tsx`。
 5. 输入一个 `BV` 号或 bilibili 视频链接。
 6. 导入完成后，点击任意分P开始播放。
