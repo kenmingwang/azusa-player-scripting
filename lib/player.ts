@@ -26,6 +26,14 @@ const SharedAudioSessionApi =
 const MediaPlayerApi = (MediaPlayer as any) ?? globalRuntime.MediaPlayer;
 const TimeControlStatusApi =
   (TimeControlStatus as any) ?? globalRuntime.TimeControlStatus;
+const setIntervalApi =
+  typeof globalRuntime.setInterval === "function"
+    ? globalRuntime.setInterval.bind(globalRuntime)
+    : null;
+const clearIntervalApi =
+  typeof globalRuntime.clearInterval === "function"
+    ? globalRuntime.clearInterval.bind(globalRuntime)
+    : null;
 
 const hasNativeAudioPlayer = () => typeof AVPlayerCtor === "function";
 
@@ -233,14 +241,19 @@ class AzusaScriptingPlayer {
 
   private startTicker() {
     this.stopTicker();
-    this.updateTimer = setInterval(() => {
+    if (!setIntervalApi) {
+      return;
+    }
+    this.updateTimer = setIntervalApi(() => {
       this.updateNowPlaying();
     }, 1000) as unknown as number;
   }
 
   private stopTicker() {
     if (this.updateTimer) {
-      clearInterval(this.updateTimer);
+      if (clearIntervalApi) {
+        clearIntervalApi(this.updateTimer);
+      }
       this.updateTimer = undefined;
     }
   }

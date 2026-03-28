@@ -4,6 +4,9 @@ declare module "scripting" {
   export const Script: any;
   export const Intent: any;
   export const Button: any;
+  export const Circle: any;
+  export const Dialog: any;
+  export const List: any;
   export const Text: any;
   export const TextField: any;
   export const Form: any;
