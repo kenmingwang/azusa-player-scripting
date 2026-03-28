@@ -24,6 +24,14 @@ declare module "scripting" {
   export const useState: any;
 }
 
+declare function setInterval(
+  handler: (...args: any[]) => void,
+  timeout?: number,
+  ...args: any[]
+): number;
+
+declare function clearInterval(handle?: number): void;
+
 declare namespace JSX {
   interface Element {}
   interface IntrinsicElements {
