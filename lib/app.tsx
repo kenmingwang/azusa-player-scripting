@@ -5,6 +5,6 @@ type AzusaPoCAppProps = {
   autoImport?: boolean;
 };
 
-export function AzusaPoCApp(_props: AzusaPoCAppProps) {
-  return <DefaultPlaylistApp />;
+export function AzusaPoCApp(props: AzusaPoCAppProps) {
+  return <DefaultPlaylistApp initialInput={props.initialInput} />;
 }

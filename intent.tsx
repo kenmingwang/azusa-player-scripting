@@ -13,10 +13,10 @@ function resolveIntentInput() {
 }
 
 async function run() {
-  resolveIntentInput();
+  const initialInput = resolveIntentInput();
 
   await Navigation.present({
-    element: <DefaultPlaylistApp />,
+    element: <DefaultPlaylistApp initialInput={initialInput} />,
   });
 
   Script.exit();
