@@ -15,6 +15,10 @@ const WidgetApi = (Widget as any) ?? globalRuntime.Widget;
 const ControlWidgetApi = (ControlWidget as any) ?? globalRuntime.ControlWidget;
 const SafariApi = (Safari as any) ?? globalRuntime.Safari;
 const ScriptApi = (Script as any) ?? globalRuntime.Script;
+const FALLBACK_SCRIPT_NAMES = [
+  "Azusa Player Scripting",
+  "Azusa 播放器 Scripting",
+];
 
 export type AzusaLiveActivityState = {
   title: string;
@@ -123,26 +127,47 @@ export function queueExternalCommand(input: {
 }
 
 export async function foregroundAzusa(queryParameters?: Record<string, unknown>) {
-  try {
-    const scriptName = ScriptApi?.name;
-    const runSingleURL = ScriptApi?.createRunSingleURLScheme?.(
-      scriptName,
-      queryParameters,
-    );
+  const scriptNames = [
+    ScriptApi?.name,
+    ScriptApi?.metadata?.localizedName,
+    ...(ScriptApi?.metadata?.localizedNames
+      ? Object.values(ScriptApi.metadata.localizedNames)
+      : []),
+    ...FALLBACK_SCRIPT_NAMES,
+  ].filter((value, index, list) => typeof value === "string" && value && list.indexOf(value) === index);
 
-    if (runSingleURL && SafariApi?.openURL) {
-      return Boolean(await SafariApi.openURL(runSingleURL));
+  try {
+    if (SafariApi?.openURL) {
+      for (const scriptName of scriptNames) {
+        const runSingleURL = ScriptApi?.createRunSingleURLScheme?.(
+          scriptName,
+          queryParameters,
+        );
+        if (runSingleURL && (await SafariApi.openURL(runSingleURL))) {
+          return true;
+        }
+
+        const runURL = ScriptApi?.createRunURLScheme?.(
+          scriptName,
+          queryParameters,
+        );
+        if (runURL && (await SafariApi.openURL(runURL))) {
+          return true;
+        }
+      }
     }
   } catch {}
 
   try {
     if (ScriptApi?.run) {
-      await ScriptApi.run({
-        name: ScriptApi?.name,
-        queryParameters,
-        singleMode: true,
-      });
-      return true;
+      for (const scriptName of scriptNames) {
+        await ScriptApi.run({
+          name: scriptName,
+          queryParameters,
+          singleMode: true,
+        });
+        return true;
+      }
     }
   } catch {}
 

@@ -12,6 +12,7 @@ import type {
 const STATE_KEY = "azusa.scripting.poc.state";
 const DOWNLOADS_KEY = "azusa.scripting.poc.downloads";
 const RECENT_SOURCE_LIMIT = 8;
+const SHARED_OPTIONS = { shared: true } as const;
 
 type DownloadIndex = Record<string, string>;
 
@@ -27,20 +28,25 @@ const globalRuntime = globalThis as any;
 const storageApi = (Storage as any) ?? globalRuntime.Storage;
 const memoryStore = new Map<string, unknown>();
 
-function safeGet<T>(key: string): T | null {
+function safeGet<T>(key: string, shared = false): T | null {
   try {
     if (storageApi?.get) {
-      return (storageApi.get(key) as T | null) ?? null;
+      return (
+        (storageApi.get(
+          key,
+          shared ? SHARED_OPTIONS : undefined,
+        ) as T | null) ?? null
+      );
     }
   } catch {}
 
   return (memoryStore.get(key) as T | null) ?? null;
 }
 
-function safeSet<T>(key: string, value: T) {
+function safeSet<T>(key: string, value: T, shared = false) {
   try {
     if (storageApi?.set) {
-      storageApi.set(key, value);
+      storageApi.set(key, value, shared ? SHARED_OPTIONS : undefined);
       return;
     }
   } catch {}
@@ -188,11 +194,21 @@ function normalizeState(value: unknown): PersistedState {
 }
 
 export function loadState(): PersistedState {
-  return normalizeState(safeGet<PersistedState>(STATE_KEY) ?? defaultState);
+  const sharedState = safeGet<PersistedState>(STATE_KEY, true);
+  const privateState = safeGet<PersistedState>(STATE_KEY, false);
+  const nextState = normalizeState(sharedState ?? privateState ?? defaultState);
+
+  if (!sharedState && privateState) {
+    safeSet(STATE_KEY, nextState, true);
+  }
+
+  return nextState;
 }
 
 export function saveState(nextState: PersistedState) {
-  safeSet(STATE_KEY, normalizeState(nextState));
+  const normalized = normalizeState(nextState);
+  safeSet(STATE_KEY, normalized, true);
+  safeSet(STATE_KEY, normalized, false);
 }
 
 export function updateState(
@@ -267,7 +283,15 @@ export function setPlaybackSnapshot(snapshot: PlaybackSnapshot | null) {
 }
 
 export function loadDownloads(): DownloadIndex {
-  return safeGet<DownloadIndex>(DOWNLOADS_KEY) ?? {};
+  const sharedDownloads = safeGet<DownloadIndex>(DOWNLOADS_KEY, true);
+  const privateDownloads = safeGet<DownloadIndex>(DOWNLOADS_KEY, false);
+  const nextDownloads = sharedDownloads ?? privateDownloads ?? {};
+
+  if (!sharedDownloads && privateDownloads) {
+    safeSet(DOWNLOADS_KEY, nextDownloads, true);
+  }
+
+  return nextDownloads;
 }
 
 export function attachDownloadedPaths(tracks: Track[]) {
@@ -281,5 +305,6 @@ export function attachDownloadedPaths(tracks: Track[]) {
 export function rememberDownload(trackId: string, localFilePath: string) {
   const current = loadDownloads();
   current[trackId] = localFilePath;
-  safeSet(DOWNLOADS_KEY, current);
+  safeSet(DOWNLOADS_KEY, current, true);
+  safeSet(DOWNLOADS_KEY, current, false);
 }
