@@ -16,8 +16,8 @@ const mode = String(ControlWidget.parameter || "playPause");
 const actionMap = {
   playPause: {
     intent: hasSnapshot ? TogglePlaybackIntent(undefined) : OpenAzusaIntent(undefined),
-    title: hasSnapshot ? "Azusa" : "打开 Azusa",
-    systemImage: hasSnapshot ? "playpause.fill" : "music.note.list",
+    title: hasSnapshot ? (isPlaying ? "暂停" : "继续") : "打开 Azusa",
+    systemImage: hasSnapshot ? (isPlaying ? "pause.fill" : "play.fill") : "music.note.list",
     valueLabel: hasSnapshot ? (isPlaying ? "暂停播放" : "继续播放") : "打开 Azusa",
   },
   next: {

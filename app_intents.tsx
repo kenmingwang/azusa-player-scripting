@@ -14,6 +14,12 @@ import {
 import { parseSourceInput } from "./lib/sources";
 import type { PlaybackUiState, Track } from "./lib/types";
 
+const globalRuntime = globalThis as any;
+const setTimeoutApi =
+  typeof globalRuntime.setTimeout === "function"
+    ? globalRuntime.setTimeout.bind(globalRuntime)
+    : null;
+
 function hasPlayableSnapshot() {
   const state = loadState();
   return Boolean(
@@ -90,6 +96,20 @@ async function tryDirectTransportControl(
       await player.skip(1);
     } else {
       await player.skip(-1);
+    }
+
+    if (playbackState === "loading") {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        if (player.getPlaybackState() !== "loading") {
+          break;
+        }
+        if (!setTimeoutApi) {
+          break;
+        }
+        await new Promise<void>((resolve) => {
+          setTimeoutApi(resolve, 180);
+        });
+      }
     }
 
     syncCurrent(player.getQueue());

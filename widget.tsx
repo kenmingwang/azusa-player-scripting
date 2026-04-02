@@ -7,6 +7,7 @@ import {
   TogglePlaybackIntent,
 } from "./app_intents";
 import { loadState } from "./lib/storage";
+import type { PlaybackSnapshot } from "./lib/types";
 
 function playbackLabel(state?: string) {
   switch (state) {
@@ -23,7 +24,20 @@ function playbackLabel(state?: string) {
   }
 }
 
-function ActionRow() {
+function ActionRow(props: PlaybackSnapshot) {
+  const playPauseTitle =
+    props.playbackState === "playing"
+      ? "暂停"
+      : props.playbackState === "loading"
+        ? "加载中"
+        : "继续";
+  const playPauseIcon =
+    props.playbackState === "playing"
+      ? "pause.fill"
+      : props.playbackState === "loading"
+        ? "hourglass"
+        : "play.fill";
+
   return (
     <HStack spacing={8}>
       <Button
@@ -32,8 +46,8 @@ function ActionRow() {
         intent={PreviousTrackIntent(undefined)}
       />
       <Button
-        title="播放/暂停"
-        systemImage="playpause.fill"
+        title={playPauseTitle}
+        systemImage={playPauseIcon}
         intent={TogglePlaybackIntent(undefined)}
       />
       <Button
@@ -83,7 +97,7 @@ function WidgetView() {
       <Text font={"caption"} foregroundColor={"secondary"}>
         {snapshot.sourceTitle}
       </Text>
-      <ActionRow />
+      <ActionRow {...snapshot} />
     </VStack>
   );
 }

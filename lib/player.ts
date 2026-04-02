@@ -150,6 +150,7 @@ class AzusaScriptingPlayer {
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
       this.player!.play();
+      this.emitState("playing");
       this.startTicker();
       this.updateNowPlaying();
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
@@ -159,6 +160,7 @@ class AzusaScriptingPlayer {
   pause() {
     if (!this.player) return;
     this.player.pause();
+    this.emitState("paused");
     this.updateNowPlaying();
   }
 
@@ -173,6 +175,7 @@ class AzusaScriptingPlayer {
     }
 
     this.player.play();
+    this.emitState("playing");
     this.startTicker();
     this.updateNowPlaying();
   }
