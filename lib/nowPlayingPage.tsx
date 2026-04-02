@@ -1,6 +1,5 @@
 import {
   Button,
-  Circle,
   HStack,
   List,
   NavigationLink,
@@ -11,6 +10,7 @@ import {
   useState,
 } from "scripting";
 
+import { ArtworkView } from "./artworkView";
 import { LyricsPage } from "./lyricsPage";
 import { getSharedPlayer } from "./player";
 import type { PlaybackMode, PlaybackUiState, Track } from "./types";
@@ -27,6 +27,7 @@ const clearIntervalApi =
 
 type NowPlayingPageProps = {
   currentTrack: Track | null;
+  artworkUrl?: string;
   sourceTitle: string;
   playbackState: PlaybackUiState;
   playbackMode: PlaybackMode;
@@ -95,9 +96,10 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
     >
       <Section>
         <VStack alignment={"leading"} spacing={12}>
-          <Circle
-            fill={props.playbackState === "playing" ? "systemBlue" : "systemGray3"}
-            frame={{ width: 120, height: 120 }}
+          <ArtworkView
+            cover={props.artworkUrl}
+            size={120}
+            fallbackColor={props.playbackState === "playing" ? "systemBlue" : "systemGray3"}
           />
           <VStack alignment={"leading"} spacing={5}>
             <Text font={"title2"}>

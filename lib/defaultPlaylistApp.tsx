@@ -2,7 +2,6 @@ import {
   AppEvents,
   BackgroundKeeper,
   Button,
-  Circle,
   Dialog,
   HStack,
   List,
@@ -19,6 +18,7 @@ import {
 } from "scripting";
 
 import { importFromSource } from "./api";
+import { ArtworkView } from "./artworkView";
 import {
   buildPlaybackSnapshot,
   reloadExternalSurfaces,
@@ -765,9 +765,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         <Section header={<Text font={"caption"}>当前歌单</Text>}>
           <VStack alignment={"leading"} spacing={5}>
             <HStack spacing={16}>
-              <Circle
-                fill={playbackState === "playing" ? "systemBlue" : "systemGray3"}
-                frame={{ width: 64, height: 64 }}
+              <ArtworkView
+                cover={sourceCover || currentTrack?.cover}
+                size={64}
+                fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
               />
               <VStack alignment={"leading"} spacing={4}>
                 <Text font={"headline"}>{sourceTitle}</Text>
@@ -840,6 +841,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             destination={
               <NowPlayingPage
                 currentTrack={currentTrack}
+                artworkUrl={currentTrack?.cover || sourceCover}
                 sourceTitle={sourceTitle}
                 playbackState={playbackState}
                 playbackMode={playbackMode}
@@ -851,11 +853,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 onNext={() => skipBy(1)}
                 onCyclePlaybackMode={cyclePlaybackMode}
               />
-            }>
+          }>
             <HStack spacing={14}>
-              <Circle
-                fill={playbackState === "playing" ? "systemBlue" : "systemGray3"}
-                frame={{ width: 44, height: 44 }}
+              <ArtworkView
+                cover={currentTrack?.cover || sourceCover}
+                size={44}
+                fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
               />
               <VStack alignment={"leading"} spacing={4}>
                 <Text font={"body"}>
