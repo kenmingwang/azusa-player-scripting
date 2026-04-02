@@ -1,6 +1,8 @@
 declare module "scripting" {
+  export const AppEvents: any;
   export const AppIntentManager: any;
   export const AppIntentProtocol: any;
+  export const BackgroundKeeper: any;
   export const ControlWidget: any;
   export const ControlWidgetButton: any;
   export const Navigation: any;

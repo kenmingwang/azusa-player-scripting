@@ -1,4 +1,6 @@
 import {
+  AppEvents,
+  BackgroundKeeper,
   Button,
   Circle,
   Dialog,
@@ -6,6 +8,7 @@ import {
   List,
   NavigationStack,
   Section,
+  Script,
   Spacer,
   Text,
   VStack,
@@ -57,6 +60,10 @@ const clearIntervalApi =
   typeof globalRuntime.clearInterval === "function"
     ? globalRuntime.clearInterval.bind(globalRuntime)
     : null;
+const AppEventsApi = (AppEvents as any) ?? globalRuntime.AppEvents;
+const BackgroundKeeperApi =
+  (BackgroundKeeper as any) ?? globalRuntime.BackgroundKeeper;
+const ScriptApi = (Script as any) ?? globalRuntime.Script;
 
 type DefaultPlaylistAppProps = {
   initialInput?: string;
@@ -149,6 +156,22 @@ function commandLabel(command: PendingExternalCommand["type"]) {
   }
 }
 
+function keepAliveStateLabel(
+  scenePhase: string,
+  keepAliveState: "idle" | "requested" | "active" | "unsupported",
+) {
+  if (keepAliveState === "unsupported") {
+    return "当前入口不支持后台保活";
+  }
+  if (scenePhase === "background" && keepAliveState === "requested") {
+    return "后台保活请求中";
+  }
+  if (scenePhase === "background" && keepAliveState === "active") {
+    return "后台保活已启用";
+  }
+  return "前台运行中";
+}
+
 export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const persistedState = loadState();
   const requestedInput = props.initialInput?.trim() || "";
@@ -194,6 +217,13 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }),
     [],
   );
+  const backgroundBridge = useMemo(
+    () => ({
+      scenePhase: "active",
+      keepAliveState: "idle" as "idle" | "requested" | "active" | "unsupported",
+    }),
+    [],
+  );
 
   const [activeSource, setActiveSource] = useState(initialSource);
   const [loading, setLoading] = useState(false);
@@ -213,6 +243,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [currentIndex, setCurrentIndex] = useState(initialCurrentIndex);
   const [currentTrack, setCurrentTrack] = useState(initialCurrentTrack as Track | null);
   const [playerMessage] = useState(getNativePlayerCompatibilityMessage());
+  const [scenePhase, setScenePhase] = useState("active");
+  const [keepAliveState, setKeepAliveState] = useState(
+    ScriptApi?.env === "index" ? "idle" : "unsupported",
+  );
 
   async function loadSource(nextSource?: SourceDescriptor) {
     const source = nextSource || activeSource || DEFAULT_SOURCE;
@@ -390,6 +424,52 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
   }
 
+  async function syncBackgroundKeepAlive(nextPhase?: string) {
+    const phase = nextPhase ?? backgroundBridge.scenePhase;
+    const supportsKeepAlive =
+      ScriptApi?.env === "index" &&
+      typeof BackgroundKeeperApi?.keepAlive === "function" &&
+      typeof BackgroundKeeperApi?.stopKeepAlive === "function";
+
+    if (!supportsKeepAlive) {
+      backgroundBridge.keepAliveState = "unsupported";
+      setKeepAliveState("unsupported");
+      return;
+    }
+
+    const shouldProtectPlayback =
+      Boolean(currentTrack) &&
+      (playbackState === "playing" ||
+        playbackState === "loading" ||
+        playbackState === "paused");
+
+    if (phase === "background" && shouldProtectPlayback) {
+      if (
+        backgroundBridge.keepAliveState === "requested" ||
+        backgroundBridge.keepAliveState === "active"
+      ) {
+        return;
+      }
+
+      backgroundBridge.keepAliveState = "requested";
+      setKeepAliveState("requested");
+      const started = await BackgroundKeeperApi.keepAlive();
+      backgroundBridge.keepAliveState = started ? "active" : "idle";
+      setKeepAliveState(started ? "active" : "idle");
+      return;
+    }
+
+    if (
+      backgroundBridge.keepAliveState === "requested" ||
+      backgroundBridge.keepAliveState === "active"
+    ) {
+      await BackgroundKeeperApi.stopKeepAlive();
+    }
+
+    backgroundBridge.keepAliveState = "idle";
+    setKeepAliveState("idle");
+  }
+
   useEffect(() => {
     player.bind({
       onQueueChange: (queue) => {
@@ -425,6 +505,25 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   }, []);
 
   useEffect(() => {
+    if (!AppEventsApi?.scenePhase?.addListener) {
+      return;
+    }
+
+    const listener = (phase: string) => {
+      backgroundBridge.scenePhase = phase;
+      setScenePhase(phase);
+      void syncBackgroundKeepAlive(phase);
+      void processPendingCommand();
+    };
+
+    AppEventsApi.scenePhase.addListener(listener);
+
+    return () => {
+      AppEventsApi?.scenePhase?.removeListener?.(listener);
+    };
+  }, [currentTrack?.id, playbackState]);
+
+  useEffect(() => {
     if (!setIntervalApi) {
       return;
     }
@@ -439,6 +538,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       }
     };
   }, [activeSource.input, tracks.length, currentTrack?.id, loading, playLoading]);
+
+  useEffect(() => {
+    void syncBackgroundKeepAlive();
+  }, [currentTrack?.id, playbackState]);
 
   const playbackSnapshot = useMemo(
     () =>
@@ -559,6 +662,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     (source) => source.input !== activeSource.input,
   );
   const pendingCommand = loadState().pendingExternalCommand;
+  const keepAliveLabel = keepAliveStateLabel(scenePhase, keepAliveState as any);
 
   return (
     <NavigationStack>
@@ -624,6 +728,9 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               外部命令待处理: {commandLabel(pendingCommand.type)}
             </Text>
           ) : null}
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            {scenePhase} · {keepAliveLabel}
+          </Text>
           {error ? (
             <Text font={"caption"} foregroundColor={"systemRed"}>
               {error}

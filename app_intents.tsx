@@ -1,7 +1,17 @@
 import { AppIntentManager, AppIntentProtocol, Script } from "scripting";
 
 import { foregroundAzusa, queueExternalCommand } from "./lib/externalBridge";
+import { loadState } from "./lib/storage";
 import { parseSourceInput } from "./lib/sources";
+
+function hasPlayableSnapshot() {
+  const state = loadState();
+  return Boolean(
+    state.playbackSnapshot?.currentTrack ||
+      state.playbackSnapshot?.queueLength ||
+      state.queue.length,
+  );
+}
 
 async function handoffToAzusa(type: "playPause" | "next" | "previous" | "openApp") {
   queueExternalCommand({
@@ -9,10 +19,15 @@ async function handoffToAzusa(type: "playPause" | "next" | "previous" | "openApp
     requestedFrom: Script.env,
   });
 
-  await foregroundAzusa({
-    externalCommand: type,
-    requestedAt: Date.now(),
-  });
+  if (
+    type === "openApp" ||
+    !hasPlayableSnapshot()
+  ) {
+    await foregroundAzusa({
+      externalCommand: type,
+      requestedAt: Date.now(),
+    });
+  }
 }
 
 export const TogglePlaybackIntent = AppIntentManager.register({
