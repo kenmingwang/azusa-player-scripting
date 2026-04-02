@@ -5,7 +5,9 @@ declare module "scripting" {
   export const BackgroundKeeper: any;
   export const ControlWidget: any;
   export const ControlWidgetButton: any;
+  export const DocumentPicker: any;
   export const Navigation: any;
+  export const NavigationLink: any;
   export const NavigationStack: any;
   export const Script: any;
   export const Intent: any;

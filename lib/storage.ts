@@ -12,11 +12,13 @@ import type {
 
 const STATE_KEY = "azusa.scripting.poc.state";
 const DOWNLOADS_KEY = "azusa.scripting.poc.downloads";
+const LYRICS_KEY = "azusa.scripting.poc.lyrics";
 const IMMEDIATE_SNAPSHOT_KEY = "azusa.scripting.poc.snapshot.immediate";
 const RECENT_SOURCE_LIMIT = 8;
 const SHARED_OPTIONS = { shared: true } as const;
 
 type DownloadIndex = Record<string, string>;
+type LyricsIndex = Record<string, string>;
 
 const defaultState: PersistedState = {
   lastInput: "",
@@ -402,4 +404,76 @@ export function rememberDownload(trackId: string, localFilePath: string) {
   current[trackId] = localFilePath;
   safeSet(DOWNLOADS_KEY, current, true);
   safeSet(DOWNLOADS_KEY, current, false);
+}
+
+function lyricLookupKeys(input: {
+  id?: string;
+  title?: string;
+  artist?: string;
+}) {
+  const normalizedTitle = (input.title ?? "").trim().toLowerCase();
+  const normalizedArtist = (input.artist ?? "").trim().toLowerCase();
+  const fingerprint =
+    normalizedTitle || normalizedArtist
+      ? `song:${normalizedArtist}::${normalizedTitle}`
+      : null;
+
+  return [input.id, fingerprint].filter(Boolean) as string[];
+}
+
+export function loadLyricsIndex(): LyricsIndex {
+  const sharedLyrics = safeGet<LyricsIndex>(LYRICS_KEY, true);
+  const privateLyrics = safeGet<LyricsIndex>(LYRICS_KEY, false);
+  const nextLyrics = sharedLyrics ?? privateLyrics ?? {};
+
+  if (!sharedLyrics && privateLyrics) {
+    safeSet(LYRICS_KEY, nextLyrics, true);
+  }
+
+  return nextLyrics;
+}
+
+export function loadTrackLyrics(input: {
+  id?: string;
+  title?: string;
+  artist?: string;
+}) {
+  const lyricsIndex = loadLyricsIndex();
+  for (const key of lyricLookupKeys(input)) {
+    if (lyricsIndex[key]) {
+      return lyricsIndex[key];
+    }
+  }
+  return "";
+}
+
+export function saveTrackLyrics(
+  input: {
+    id?: string;
+    title?: string;
+    artist?: string;
+  },
+  rawLyrics: string,
+) {
+  const nextLyrics = loadLyricsIndex();
+  for (const key of lyricLookupKeys(input)) {
+    nextLyrics[key] = rawLyrics;
+  }
+
+  safeSet(LYRICS_KEY, nextLyrics, true);
+  safeSet(LYRICS_KEY, nextLyrics, false);
+}
+
+export function clearTrackLyrics(input: {
+  id?: string;
+  title?: string;
+  artist?: string;
+}) {
+  const nextLyrics = loadLyricsIndex();
+  for (const key of lyricLookupKeys(input)) {
+    delete nextLyrics[key];
+  }
+
+  safeSet(LYRICS_KEY, nextLyrics, true);
+  safeSet(LYRICS_KEY, nextLyrics, false);
 }

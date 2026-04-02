@@ -1,0 +1,107 @@
+<svg width="900" height="1800" viewBox="0 0 900 1800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="60" x2="820" y2="1740" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18181C"/>
+      <stop offset="1" stop-color="#0E1013"/>
+    </linearGradient>
+    <linearGradient id="card" x1="110" y1="180" x2="790" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24262D"/>
+      <stop offset="1" stop-color="#191B22"/>
+    </linearGradient>
+    <linearGradient id="mini" x1="90" y1="1510" x2="810" y2="1700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1C2330"/>
+      <stop offset="1" stop-color="#11151D"/>
+    </linearGradient>
+    <filter id="shadow" x="40" y="40" width="820" height="1720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="24"/>
+      <feGaussianBlur stdDeviation="20"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0.0156863 0 0 0 0 0.0470588 0 0 0 0.5 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect width="900" height="1800" fill="#D9D0C3"/>
+  <circle cx="110" cy="120" r="260" fill="#C85C22" fill-opacity="0.5"/>
+  <circle cx="804" cy="1608" r="340" fill="#F8F4ED"/>
+  <g filter="url(#shadow)">
+    <rect x="70" y="70" width="760" height="1660" rx="54" fill="url(#bg)"/>
+
+    <text x="120" y="148" fill="#FFFFFF" font-size="28" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif" font-weight="700">Azusa</text>
+    <text x="728" y="148" fill="#7B8090" font-size="20" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif">歌单首页</text>
+
+    <rect x="110" y="184" width="680" height="286" rx="36" fill="url(#card)" stroke="#2B2E38"/>
+    <rect x="138" y="214" width="118" height="118" rx="28" fill="#1E96FC"/>
+    <rect x="138" y="348" width="84" height="34" rx="17" fill="#0D2034"/>
+    <text x="158" y="370" fill="#78C6FF" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">视频</text>
+
+    <text x="282" y="248" fill="#FFFFFF" font-size="20" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="700">[阿梓] 2021 精选翻唱 50 首</text>
+    <text x="282" y="286" fill="#AEB4C0" font-size="16" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">BV1wr4y1v7TA · 好孩样</text>
+    <text x="282" y="324" fill="#DCE2EA" font-size="34" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif" font-weight="700">50 首</text>
+    <text x="392" y="324" fill="#7B8090" font-size="20" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">/ 已缓存 12</text>
+    <text x="282" y="362" fill="#7B8090" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">顺序播放 · 上次停在 38</text>
+
+    <rect x="282" y="394" width="124" height="42" rx="21" fill="#1E96FC"/>
+    <rect x="420" y="394" width="124" height="42" rx="21" fill="#2B2E38"/>
+    <rect x="558" y="394" width="124" height="42" rx="21" fill="#2B2E38"/>
+    <text x="322" y="420" fill="#FFFFFF" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">切换来源</text>
+    <text x="456" y="420" fill="#D8DDE7" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">最近来源</text>
+    <text x="600" y="420" fill="#D8DDE7" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">播放模式</text>
+
+    <text x="120" y="538" fill="#7B8090" font-size="20" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">播放队列</text>
+    <text x="690" y="538" fill="#7B8090" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">搜索 / 筛选</text>
+
+    <rect x="110" y="570" width="680" height="122" rx="28" fill="#132536" stroke="#1E96FC" stroke-width="2"/>
+    <circle cx="150" cy="630" r="18" fill="#1E96FC"/>
+    <text x="144" y="637" fill="#FFFFFF" font-size="16" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="700">38</text>
+    <text x="184" y="616" fill="#FFFFFF" font-size="28" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="700">刻在我心底的名字</text>
+    <text x="184" y="652" fill="#89D2FF" font-size="17" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">正在播放 · 5:13 · 已缓存</text>
+    <text x="660" y="632" fill="#A8DCFF" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="700">当前</text>
+
+    <rect x="110" y="708" width="680" height="110" rx="24" fill="#181C24" stroke="#2B2E38"/>
+    <text x="146" y="752" fill="#E9EDF3" font-size="26" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">39. 你，好不好？</text>
+    <text x="146" y="786" fill="#7B8090" font-size="17" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">好孩样 · 4:52 · 在线</text>
+    <text x="696" y="760" fill="#C9CED8" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">点播</text>
+
+    <rect x="110" y="834" width="680" height="110" rx="24" fill="#181C24" stroke="#2B2E38"/>
+    <text x="146" y="878" fill="#E9EDF3" font-size="26" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">40. 安静</text>
+    <text x="146" y="912" fill="#7B8090" font-size="17" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">好孩样 · 5:01 · 在线</text>
+    <text x="696" y="886" fill="#C9CED8" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">点播</text>
+
+    <rect x="110" y="960" width="680" height="110" rx="24" fill="#181C24" stroke="#2B2E38"/>
+    <text x="146" y="1004" fill="#E9EDF3" font-size="26" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">41. 晚安</text>
+    <text x="146" y="1038" fill="#7B8090" font-size="17" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">好孩样 · 4:35 · 已缓存</text>
+    <text x="696" y="1012" fill="#C9CED8" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">点播</text>
+
+    <rect x="110" y="1086" width="680" height="110" rx="24" fill="#181C24" stroke="#2B2E38"/>
+    <text x="146" y="1130" fill="#E9EDF3" font-size="26" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">42. 晴天</text>
+    <text x="146" y="1164" fill="#7B8090" font-size="17" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">好孩样 · 3:58 · 在线</text>
+    <text x="696" y="1138" fill="#C9CED8" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">点播</text>
+
+    <rect x="110" y="1212" width="680" height="110" rx="24" fill="#181C24" stroke="#2B2E38"/>
+    <text x="146" y="1256" fill="#E9EDF3" font-size="26" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="600">43. 失落沙洲</text>
+    <text x="146" y="1290" fill="#7B8090" font-size="17" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">好孩样 · 4:11 · 在线</text>
+    <text x="696" y="1264" fill="#C9CED8" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">点播</text>
+
+    <text x="120" y="1386" fill="#7B8090" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">首页重点应该是管理歌单，而不是把全尺寸播放器放在最上面。</text>
+
+    <rect x="90" y="1496" width="720" height="188" rx="34" fill="url(#mini)" stroke="#2A3446"/>
+    <rect x="120" y="1528" width="86" height="86" rx="22" fill="#1E96FC"/>
+    <text x="230" y="1560" fill="#89D2FF" font-size="16" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">底部迷你播放器</text>
+    <text x="230" y="1592" fill="#FFFFFF" font-size="28" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-weight="700">刻在我心底的名字</text>
+    <text x="230" y="1626" fill="#AEB4C0" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">好孩样 · 列表循环</text>
+
+    <circle cx="612" cy="1570" r="32" fill="#2B2E38"/>
+    <circle cx="680" cy="1570" r="36" fill="#1E96FC"/>
+    <circle cx="752" cy="1570" r="32" fill="#2B2E38"/>
+    <text x="598" y="1580" fill="#DCE2EA" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">◀</text>
+    <text x="667" y="1580" fill="#FFFFFF" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">❚❚</text>
+    <text x="738" y="1580" fill="#DCE2EA" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif">▶</text>
+
+    <rect x="230" y="1650" width="542" height="6" rx="3" fill="#222833"/>
+    <rect x="230" y="1650" width="298" height="6" rx="3" fill="#1E96FC"/>
+  </g>
+</svg>
