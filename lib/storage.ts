@@ -1,4 +1,4 @@
-import { Storage } from "scripting";
+import { IntentMemoryStorage, Storage } from "scripting";
 
 import { coerceSourceDescriptor, parseSourceInput } from "./sources";
 import type {
@@ -11,6 +11,7 @@ import type {
 
 const STATE_KEY = "azusa.scripting.poc.state";
 const DOWNLOADS_KEY = "azusa.scripting.poc.downloads";
+const IMMEDIATE_SNAPSHOT_KEY = "azusa.scripting.poc.snapshot.immediate";
 const RECENT_SOURCE_LIMIT = 8;
 const SHARED_OPTIONS = { shared: true } as const;
 
@@ -26,6 +27,8 @@ const defaultState: PersistedState = {
 
 const globalRuntime = globalThis as any;
 const storageApi = (Storage as any) ?? globalRuntime.Storage;
+const intentMemoryStorageApi =
+  (IntentMemoryStorage as any) ?? globalRuntime.IntentMemoryStorage;
 const memoryStore = new Map<string, unknown>();
 
 function safeGet<T>(key: string, shared = false): T | null {
@@ -52,6 +55,50 @@ function safeSet<T>(key: string, value: T, shared = false) {
   } catch {}
 
   memoryStore.set(key, value);
+}
+
+function safeIntentMemoryGet<T>(key: string, shared = false): T | null {
+  try {
+    if (intentMemoryStorageApi?.get) {
+      return (
+        (intentMemoryStorageApi.get(
+          key,
+          shared ? SHARED_OPTIONS : undefined,
+        ) as T | null) ?? null
+      );
+    }
+  } catch {}
+
+  return (memoryStore.get(`intent-memory:${key}`) as T | null) ?? null;
+}
+
+function safeIntentMemorySet<T>(key: string, value: T, shared = false) {
+  try {
+    if (value == null) {
+      intentMemoryStorageApi?.remove?.(
+        key,
+        shared ? SHARED_OPTIONS : undefined,
+      );
+      memoryStore.delete(`intent-memory:${key}`);
+      return;
+    }
+
+    if (intentMemoryStorageApi?.set) {
+      intentMemoryStorageApi.set(
+        key,
+        value,
+        shared ? SHARED_OPTIONS : undefined,
+      );
+      return;
+    }
+  } catch {}
+
+  if (value == null) {
+    memoryStore.delete(`intent-memory:${key}`);
+    return;
+  }
+
+  memoryStore.set(`intent-memory:${key}`, value);
 }
 
 function normalizeRecentSources(value: unknown) {
@@ -166,6 +213,25 @@ function normalizePendingCommand(value: unknown): PendingExternalCommand | null 
   };
 }
 
+function snapshotTimestamp(snapshot?: PlaybackSnapshot | null) {
+  if (!snapshot?.updatedAt) {
+    return 0;
+  }
+
+  const parsed = Date.parse(snapshot.updatedAt);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function loadImmediatePlaybackSnapshot() {
+  return normalizeSnapshot(
+    safeIntentMemoryGet<PlaybackSnapshot | null>(IMMEDIATE_SNAPSHOT_KEY, true),
+  );
+}
+
+function saveImmediatePlaybackSnapshot(snapshot?: PlaybackSnapshot | null) {
+  safeIntentMemorySet(IMMEDIATE_SNAPSHOT_KEY, snapshot ?? null, true);
+}
+
 function normalizeState(value: unknown): PersistedState {
   if (!value || typeof value !== "object") {
     return { ...defaultState };
@@ -197,9 +263,25 @@ export function loadState(): PersistedState {
   const sharedState = safeGet<PersistedState>(STATE_KEY, true);
   const privateState = safeGet<PersistedState>(STATE_KEY, false);
   const nextState = normalizeState(sharedState ?? privateState ?? defaultState);
+  const immediateSnapshot = loadImmediatePlaybackSnapshot();
 
   if (!sharedState && privateState) {
     safeSet(STATE_KEY, nextState, true);
+  }
+
+  if (
+    immediateSnapshot &&
+    snapshotTimestamp(immediateSnapshot) >=
+      snapshotTimestamp(nextState.playbackSnapshot)
+  ) {
+    nextState.playbackSnapshot = immediateSnapshot;
+    nextState.currentTrackId =
+      immediateSnapshot.currentTrack?.id ?? nextState.currentTrackId;
+    nextState.sourceDescriptor =
+      immediateSnapshot.source ?? nextState.sourceDescriptor;
+    nextState.sourceTitle =
+      immediateSnapshot.sourceTitle ?? nextState.sourceTitle;
+    nextState.lastInput = immediateSnapshot.source.input ?? nextState.lastInput;
   }
 
   return nextState;
@@ -207,6 +289,7 @@ export function loadState(): PersistedState {
 
 export function saveState(nextState: PersistedState) {
   const normalized = normalizeState(nextState);
+  saveImmediatePlaybackSnapshot(normalized.playbackSnapshot);
   safeSet(STATE_KEY, normalized, true);
   safeSet(STATE_KEY, normalized, false);
 }

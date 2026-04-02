@@ -9,6 +9,7 @@ declare module "scripting" {
   export const NavigationStack: any;
   export const Script: any;
   export const Intent: any;
+  export const IntentMemoryStorage: any;
   export const Safari: any;
   export const Button: any;
   export const Circle: any;
