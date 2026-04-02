@@ -43,15 +43,32 @@ function stateSymbol(state: AzusaLiveActivityState["playbackState"]) {
 
 function LiveActivityContent(state: AzusaLiveActivityState) {
   return (
-    <VStack alignment={"leading"} spacing={4}>
-      <Text font={"headline"}>{state.title}</Text>
-      <Text font={"subheadline"} foregroundColor={"secondary"}>
-        {state.artist}
-      </Text>
-      <Text font={"caption"} foregroundColor={"secondary"}>
-        {playbackLabel(state.playbackState)} · {state.currentIndex + 1}/{state.queueLength}
-      </Text>
-    </VStack>
+    <HStack spacing={10}>
+      {state.cover ? (
+        <Image
+          imageUrl={state.cover}
+          frame={{ width: 44, height: 44 }}
+          resizable
+          aspectRatio={{ contentMode: "fill" }}
+          clipShape={{
+            type: "rect",
+            cornerRadius: 12,
+            style: "continuous",
+          }}
+        />
+      ) : (
+        <Image systemName={stateSymbol(state.playbackState)} />
+      )}
+      <VStack alignment={"leading"} spacing={4}>
+        <Text font={"headline"}>{state.title}</Text>
+        <Text font={"subheadline"} foregroundColor={"secondary"}>
+          {state.artist}
+        </Text>
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          {playbackLabel(state.playbackState)} · {state.currentIndex + 1}/{state.queueLength}
+        </Text>
+      </VStack>
+    </HStack>
   );
 }
 

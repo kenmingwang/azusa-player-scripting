@@ -13,7 +13,12 @@ export function ArtworkView(props: ArtworkViewProps) {
         imageUrl={props.cover}
         frame={{ width: props.size, height: props.size }}
         resizable
-        scaleToFill
+        aspectRatio={{ contentMode: "fill" }}
+        clipShape={{
+          type: "rect",
+          cornerRadius: Math.max(14, Math.round(props.size * 0.22)),
+          style: "continuous",
+        }}
       />
     );
   }

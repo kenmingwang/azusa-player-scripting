@@ -5,6 +5,7 @@ declare module "scripting" {
   export const BackgroundKeeper: any;
   export const ControlWidget: any;
   export const ControlWidgetButton: any;
+  export const Data: any;
   export const DocumentPicker: any;
   export const Navigation: any;
   export const NavigationLink: any;
@@ -33,6 +34,7 @@ declare module "scripting" {
   export const FileManager: any;
   export const Storage: any;
   export const BackgroundURLSession: any;
+  export const UIImage: any;
   export const AVPlayer: any;
   export const SharedAudioSession: any;
   export const MediaPlayer: any;

@@ -11,6 +11,7 @@ import {
   Script,
   Spacer,
   Text,
+  TextField,
   VStack,
   useEffect,
   useMemo,
@@ -314,6 +315,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [keepAliveState, setKeepAliveState] = useState(
     ScriptApi?.env === "index" ? "idle" : "unsupported",
   );
+  const [queueQuery, setQueueQuery] = useState("");
 
   async function loadSource(nextSource?: SourceDescriptor) {
     const source = nextSource || activeSource || DEFAULT_SOURCE;
@@ -754,6 +756,21 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const modeHint = playbackModeHint(playbackMode);
   const cachedTrackCount = tracks.filter((track) => Boolean(track.localFilePath)).length;
   const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
+  const normalizedQueueQuery = queueQuery.trim().toLowerCase();
+  const filteredTracks = tracks
+    .map((track, index) => ({ track, index }))
+    .filter(({ track }) => {
+      if (!normalizedQueueQuery) {
+        return true;
+      }
+
+      return [
+        track.title,
+        track.artist,
+        track.sourceTitle,
+        track.cid,
+      ].some((value) => value.toLowerCase().includes(normalizedQueueQuery));
+    });
 
   return (
     <NavigationStack>
@@ -895,6 +912,22 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         </Section>
 
         <Section header={<Text font={"caption"}>播放队列</Text>}>
+          {tracks.length > 8 ? (
+            <VStack alignment={"leading"} spacing={8}>
+              <TextField
+                title="搜索队列"
+                placeholder="按歌曲名 / 歌手 / CID 过滤"
+                value={queueQuery}
+                onChanged={setQueueQuery}
+              />
+              {normalizedQueueQuery ? (
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  当前结果 {filteredTracks.length} / {tracks.length}
+                </Text>
+              ) : null}
+            </VStack>
+          ) : null}
+
           {tracks.length === 0 ? (
             <VStack alignment={"leading"} spacing={4}>
               <Text font={"headline"}>还没有歌单</Text>
@@ -902,8 +935,15 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 现在支持视频、收藏夹、合集和频道四种来源。
               </Text>
             </VStack>
+          ) : filteredTracks.length === 0 ? (
+            <VStack alignment={"leading"} spacing={4}>
+              <Text font={"headline"}>没有匹配结果</Text>
+              <Text font={"subheadline"} foregroundColor={"secondary"}>
+                试试换个关键词，或者清空搜索条件。
+              </Text>
+            </VStack>
           ) : (
-            tracks.map((track: Track, index: number) => {
+            filteredTracks.map(({ track, index }) => {
               const isActive = currentIndex === index;
               const duration = formatDuration(track.durationSeconds);
               const isCached = Boolean(track.localFilePath);

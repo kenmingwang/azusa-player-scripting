@@ -1,12 +1,14 @@
 import {
   AVPlayer,
+  Data,
   FileManager,
   MediaPlayer,
   SharedAudioSession,
   TimeControlStatus,
+  UIImage,
 } from "scripting";
 
-import { resolveTrackStream } from "./api";
+import { requestHeaders, resolveTrackStream } from "./api";
 import type { PlaybackMode, PlaybackUiState, Track } from "./types";
 
 type PlayerBindings = {
@@ -26,6 +28,8 @@ const SharedAudioSessionApi =
 const MediaPlayerApi = (MediaPlayer as any) ?? globalRuntime.MediaPlayer;
 const TimeControlStatusApi =
   (TimeControlStatus as any) ?? globalRuntime.TimeControlStatus;
+const DataApi = (Data as any) ?? globalRuntime.Data;
+const UIImageApi = (UIImage as any) ?? globalRuntime.UIImage;
 const setIntervalApi =
   typeof globalRuntime.setInterval === "function"
     ? globalRuntime.setInterval.bind(globalRuntime)
@@ -64,6 +68,8 @@ class AzusaScriptingPlayer {
   private bindings: PlayerBindings = {};
   private updateTimer?: number;
   private loadToken = 0;
+  private artworkCache = new Map<string, any | null>();
+  private artworkRequests = new Map<string, Promise<any | null>>();
 
   constructor() {
     this.setupMediaCommands();
@@ -485,16 +491,80 @@ class AzusaScriptingPlayer {
     const currentTrack = this.getCurrentTrack();
     if (!currentTrack) return;
 
+    const artwork = this.artworkCache.get(currentTrack.id) ?? null;
+
     MediaPlayerApi.nowPlayingInfo = {
       title: currentTrack.title,
       artist: currentTrack.artist,
       albumTitle: currentTrack.sourceTitle,
+      artwork,
       elapsedPlaybackTime: this.player.currentTime ?? 0,
       playbackDuration:
         this.player.duration || currentTrack.durationSeconds || 0,
       playbackRate:
         this.player.timeControlStatus === TimeControlStatusApi?.playing ? 1.0 : 0.0,
     };
+
+    if (!artwork && currentTrack.cover) {
+      void this.prefetchArtwork(currentTrack);
+    }
+  }
+
+  private async prefetchArtwork(track: Track) {
+    if (!track.cover) {
+      return null;
+    }
+
+    if (this.artworkCache.has(track.id)) {
+      return this.artworkCache.get(track.id) ?? null;
+    }
+
+    const pendingRequest = this.artworkRequests.get(track.id);
+    if (pendingRequest) {
+      return pendingRequest;
+    }
+
+    const request = this.fetchArtwork(track.cover)
+      .then((image) => {
+        this.artworkCache.set(track.id, image);
+        this.artworkRequests.delete(track.id);
+        if (this.getCurrentTrack()?.id === track.id) {
+          this.updateNowPlaying();
+        }
+        return image;
+      })
+      .catch(() => {
+        this.artworkCache.set(track.id, null);
+        this.artworkRequests.delete(track.id);
+        return null;
+      });
+
+    this.artworkRequests.set(track.id, request);
+    return request;
+  }
+
+  private async fetchArtwork(coverUrl: string) {
+    if (!DataApi?.fromArrayBuffer || !UIImageApi?.fromData) {
+      return null;
+    }
+
+    const response = await fetch(coverUrl, {
+      headers: requestHeaders(),
+      timeout: 15,
+      debugLabel: `Artwork ${coverUrl}`,
+    } as any);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const buffer = await response.arrayBuffer();
+    const data = DataApi.fromArrayBuffer(buffer);
+    if (!data) {
+      return null;
+    }
+
+    return UIImageApi.fromData(data);
   }
 }
 

@@ -29,6 +29,7 @@ export type AzusaLiveActivityState = {
   title: string;
   artist: string;
   sourceTitle: string;
+  cover?: string;
   playbackState: PlaybackUiState;
   queueLength: number;
   currentIndex: number;
@@ -88,6 +89,7 @@ export function toLiveActivityState(
     title: snapshot.currentTrack.title,
     artist: snapshot.currentTrack.artist,
     sourceTitle: snapshot.sourceTitle,
+    cover: snapshot.currentTrack.cover || snapshot.cover,
     playbackState: snapshot.playbackState,
     queueLength: snapshot.queueLength,
     currentIndex: snapshot.currentIndex,
