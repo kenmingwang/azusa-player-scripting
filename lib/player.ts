@@ -54,6 +54,8 @@ class AzusaScriptingPlayer {
   private queue: Track[] = [];
   private currentIndex = -1;
   private loadedTrackId?: string;
+  private playbackState: PlaybackUiState = "idle";
+  private playbackDetail = "";
   private bindings: PlayerBindings = {};
   private updateTimer?: number;
   private loadToken = 0;
@@ -101,6 +103,14 @@ class AzusaScriptingPlayer {
 
   getDuration() {
     return this.player?.duration ?? 0;
+  }
+
+  getPlaybackState() {
+    return this.playbackState;
+  }
+
+  getPlaybackDetail() {
+    return this.playbackDetail;
   }
 
   async playIndex(index: number) {
@@ -208,6 +218,8 @@ class AzusaScriptingPlayer {
   }
 
   private emitState(state: PlaybackUiState, detail?: string) {
+    this.playbackState = state;
+    this.playbackDetail = detail ?? "";
     this.bindings.onStateChange?.(state, detail);
   }
 

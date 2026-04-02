@@ -1,8 +1,18 @@
 import { AppIntentManager, AppIntentProtocol, Script } from "scripting";
 
-import { foregroundAzusa, queueExternalCommand } from "./lib/externalBridge";
-import { loadState } from "./lib/storage";
+import {
+  buildPlaybackSnapshot,
+  foregroundAzusa,
+  queueExternalCommand,
+  reloadExternalSurfaces,
+} from "./lib/externalBridge";
+import { getSharedPlayer } from "./lib/player";
+import {
+  loadState,
+  persistPlayerState,
+} from "./lib/storage";
 import { parseSourceInput } from "./lib/sources";
+import type { PlaybackUiState, Track } from "./lib/types";
 
 function hasPlayableSnapshot() {
   const state = loadState();
@@ -13,7 +23,133 @@ function hasPlayableSnapshot() {
   );
 }
 
+async function tryDirectTransportControl(
+  type: "playPause" | "next" | "previous",
+) {
+  const state = loadState();
+  const source = state.sourceDescriptor ?? state.playbackSnapshot?.source;
+  if (!source || !state.queue.length) {
+    return false;
+  }
+
+  const player = getSharedPlayer();
+  let queue = [...state.queue];
+  let currentTrackId =
+    state.currentTrackId ?? state.playbackSnapshot?.currentTrack?.id;
+  let currentIndex =
+    typeof state.playbackSnapshot?.currentIndex === "number"
+      ? state.playbackSnapshot.currentIndex
+      : currentTrackId
+        ? queue.findIndex((track) => track.id === currentTrackId)
+        : -1;
+  let currentTrack =
+    currentIndex >= 0 ? queue[currentIndex] ?? null : null;
+  let playbackState =
+    state.playbackSnapshot?.playbackState ?? ("idle" as PlaybackUiState);
+  let playbackDetail = state.playbackSnapshot?.playbackDetail ?? "";
+  let failed = false;
+
+  const syncCurrent = (nextQueue: Track[]) => {
+    queue = [...nextQueue];
+    if (currentTrackId) {
+      currentIndex = queue.findIndex((track) => track.id === currentTrackId);
+      currentTrack = currentIndex >= 0 ? queue[currentIndex] ?? null : null;
+      return;
+    }
+    currentTrack = currentIndex >= 0 ? queue[currentIndex] ?? null : null;
+  };
+
+  player.bind({
+    onQueueChange: (nextQueue) => {
+      syncCurrent(nextQueue);
+    },
+    onCurrentTrackChange: (track, index) => {
+      currentTrack = track;
+      currentIndex = index;
+      currentTrackId = track?.id;
+    },
+    onStateChange: (nextState, detail) => {
+      playbackState = nextState;
+      playbackDetail = detail ?? "";
+    },
+    onError: () => {
+      failed = true;
+    },
+  });
+
+  try {
+    player.setQueue(queue, currentTrackId ?? null);
+
+    if (type === "playPause") {
+      if (currentTrackId || currentIndex >= 0) {
+        await player.toggle();
+      } else {
+        await player.playIndex(0);
+      }
+    } else if (type === "next") {
+      await player.skip(1);
+    } else {
+      await player.skip(-1);
+    }
+
+    syncCurrent(player.getQueue());
+    if (!currentTrack && currentTrackId) {
+      currentIndex = queue.findIndex((track) => track.id === currentTrackId);
+      currentTrack = currentIndex >= 0 ? queue[currentIndex] ?? null : null;
+    }
+
+    playbackState = player.getPlaybackState();
+    playbackDetail = player.getPlaybackDetail();
+
+    const snapshot = buildPlaybackSnapshot({
+      source,
+      sourceTitle:
+        state.playbackSnapshot?.sourceTitle ??
+        state.sourceTitle ??
+        currentTrack?.sourceTitle ??
+        source.titleHint ??
+        "Azusa",
+      ownerName:
+        state.playbackSnapshot?.ownerName ??
+        currentTrack?.artist ??
+        "",
+      cover:
+        state.playbackSnapshot?.cover ??
+        currentTrack?.cover,
+      queue,
+      currentIndex,
+      currentTrack,
+      playbackState,
+      playbackDetail,
+    });
+
+    persistPlayerState({
+      sourceDescriptor: source,
+      sourceTitle: snapshot.sourceTitle,
+      queue,
+      currentTrackId,
+      playbackSnapshot: snapshot,
+    });
+    reloadExternalSurfaces();
+    return !failed;
+  } catch {
+    return false;
+  } finally {
+    player.bind({});
+  }
+}
+
 async function handoffToAzusa(type: "playPause" | "next" | "previous" | "openApp") {
+  if (
+    type === "playPause" ||
+    type === "next" ||
+    type === "previous"
+  ) {
+    if (await tryDirectTransportControl(type)) {
+      return;
+    }
+  }
+
   queueExternalCommand({
     type,
     requestedFrom: Script.env,
