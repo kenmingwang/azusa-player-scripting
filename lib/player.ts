@@ -54,6 +54,10 @@ class AzusaScriptingPlayer {
   private queue: Track[] = [];
   private currentIndex = -1;
   private loadedTrackId?: string;
+  private activeTrackId?: string;
+  private sourceCandidates: string[] = [];
+  private sourceAttemptIndex = 0;
+  private sourceRefreshCount = 0;
   private playbackState: PlaybackUiState = "idle";
   private playbackDetail = "";
   private bindings: PlayerBindings = {};
@@ -129,23 +133,13 @@ class AzusaScriptingPlayer {
     await SharedAudioSessionApi.setActive(true);
 
     let track = this.queue[index];
-    if (!(track.localFilePath && FileManager.existsSync(track.localFilePath))) {
-      track = await resolveTrackStream(track);
-      this.queue[index] = track;
-      this.bindings.onQueueChange?.([...this.queue]);
-    }
+    track = await this.prepareTrackForPlayback(track);
+    this.queue[index] = track;
+    this.bindings.onQueueChange?.([...this.queue]);
 
-    const source =
-      track.localFilePath && FileManager.existsSync(track.localFilePath)
-        ? track.localFilePath
-        : track.streamUrl!;
-
-    this.player!.stop();
-    const ready = this.player!.setSource(source);
-    if (!ready) {
+    if (!this.loadPreparedTrack(track)) {
       throw new Error("播放器无法装载音频源");
     }
-    this.loadedTrackId = track.id;
 
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
@@ -201,6 +195,10 @@ class AzusaScriptingPlayer {
     if (!this.player) return;
     this.player.stop();
     this.loadedTrackId = undefined;
+    this.activeTrackId = undefined;
+    this.sourceCandidates = [];
+    this.sourceAttemptIndex = 0;
+    this.sourceRefreshCount = 0;
     this.stopTicker();
     this.emitState("paused");
     if (MediaPlayerApi) {
@@ -215,6 +213,10 @@ class AzusaScriptingPlayer {
       this.player.dispose();
     }
     this.loadedTrackId = undefined;
+    this.activeTrackId = undefined;
+    this.sourceCandidates = [];
+    this.sourceAttemptIndex = 0;
+    this.sourceRefreshCount = 0;
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
@@ -264,11 +266,118 @@ class AzusaScriptingPlayer {
     };
 
     this.player.onError = (message: string) => {
-      this.emitState("error", message);
-      this.bindings.onError?.(message);
+      void this.handlePlaybackError(message);
     };
 
     return this.player;
+  }
+
+  private async handlePlaybackError(message: string) {
+    if (await this.tryRecoverFromStreamError()) {
+      return;
+    }
+
+    this.emitState("error", message);
+    this.bindings.onError?.(message);
+  }
+
+  private async prepareTrackForPlayback(
+    track: Track,
+    forceRefresh = false,
+  ): Promise<Track> {
+    if (track.localFilePath && FileManager.existsSync(track.localFilePath)) {
+      return track;
+    }
+
+    if (!forceRefresh && track.streamUrl) {
+      return track;
+    }
+
+    return resolveTrackStream({
+      ...track,
+      streamUrl: forceRefresh ? undefined : track.streamUrl,
+      backupStreamUrls: forceRefresh ? undefined : track.backupStreamUrls,
+    });
+  }
+
+  private collectSourceCandidates(track: Track) {
+    const candidates = track.localFilePath && FileManager.existsSync(track.localFilePath)
+      ? [track.localFilePath]
+      : [
+          track.streamUrl,
+          ...(track.backupStreamUrls ?? []),
+        ];
+
+    return [...new Set(candidates.filter(Boolean) as string[])];
+  }
+
+  private loadPreparedTrack(track: Track, resetRefreshCount = true) {
+    this.activeTrackId = track.id;
+    this.loadedTrackId = undefined;
+    this.sourceCandidates = this.collectSourceCandidates(track);
+    this.sourceAttemptIndex = 0;
+    if (resetRefreshCount) {
+      this.sourceRefreshCount = 0;
+    }
+    return this.tryLoadCurrentSourceCandidate();
+  }
+
+  private tryLoadCurrentSourceCandidate() {
+    if (!this.player) {
+      return false;
+    }
+
+    while (this.sourceAttemptIndex < this.sourceCandidates.length) {
+      const source = this.sourceCandidates[this.sourceAttemptIndex];
+      this.player.stop();
+      const ready = this.player.setSource(source);
+      if (ready) {
+        this.loadedTrackId = this.activeTrackId;
+        return true;
+      }
+      this.sourceAttemptIndex += 1;
+    }
+
+    return false;
+  }
+
+  private async tryRecoverFromStreamError() {
+    const currentTrack = this.getCurrentTrack();
+    if (
+      !this.player ||
+      !currentTrack ||
+      !this.activeTrackId ||
+      currentTrack.id !== this.activeTrackId
+    ) {
+      return false;
+    }
+
+    if (this.sourceAttemptIndex + 1 < this.sourceCandidates.length) {
+      this.sourceAttemptIndex += 1;
+      this.emitState("loading", "音频流异常，正在切换线路");
+      return this.tryLoadCurrentSourceCandidate();
+    }
+
+    const canRefreshRemoteStream =
+      !(currentTrack.localFilePath && FileManager.existsSync(currentTrack.localFilePath)) &&
+      this.sourceRefreshCount < 1;
+
+    if (!canRefreshRemoteStream) {
+      return false;
+    }
+
+    this.sourceRefreshCount += 1;
+    this.emitState("loading", "音频流失效，正在刷新地址");
+
+    try {
+      const refreshedTrack = await this.prepareTrackForPlayback(currentTrack, true);
+      this.queue[this.currentIndex] = refreshedTrack;
+      this.bindings.onQueueChange?.([...this.queue]);
+      return this.loadPreparedTrack(refreshedTrack, false);
+    } catch (error) {
+      this.playbackDetail = error instanceof Error ? error.message : String(error);
+      return false;
+    }
   }
 
   private startTicker() {

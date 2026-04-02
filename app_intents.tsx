@@ -3,8 +3,8 @@ import { AppIntentManager, AppIntentProtocol, Script } from "scripting";
 import {
   buildPlaybackSnapshot,
   foregroundAzusa,
+  pulseExternalSurfaces,
   queueExternalCommand,
-  reloadExternalSurfaces,
 } from "./lib/externalBridge";
 import { getSharedPlayer } from "./lib/player";
 import {
@@ -159,7 +159,7 @@ async function tryDirectTransportControl(
       currentTrackId,
       playbackSnapshot: snapshot,
     });
-    reloadExternalSurfaces();
+    await pulseExternalSurfaces();
     return !failed;
   } catch {
     return false;

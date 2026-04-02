@@ -15,6 +15,10 @@ const WidgetApi = (Widget as any) ?? globalRuntime.Widget;
 const ControlWidgetApi = (ControlWidget as any) ?? globalRuntime.ControlWidget;
 const SafariApi = (Safari as any) ?? globalRuntime.Safari;
 const ScriptApi = (Script as any) ?? globalRuntime.Script;
+const setTimeoutApi =
+  typeof globalRuntime.setTimeout === "function"
+    ? globalRuntime.setTimeout.bind(globalRuntime)
+    : null;
 const FALLBACK_SCRIPT_NAMES = [
   "Azusa Player Scripting",
   "Azusa 播放器 Scripting",
@@ -124,6 +128,28 @@ export function queueExternalCommand(input: {
   setPendingExternalCommand(command);
   reloadExternalSurfaces();
   return command;
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    if (!setTimeoutApi || ms <= 0) {
+      resolve();
+      return;
+    }
+
+    setTimeoutApi(() => resolve(), ms);
+  });
+}
+
+export async function pulseExternalSurfaces(
+  delays: number[] = [250, 1000],
+) {
+  reloadExternalSurfaces();
+
+  for (const delay of delays) {
+    await wait(delay);
+    reloadExternalSurfaces();
+  }
 }
 
 export async function foregroundAzusa(queryParameters?: Record<string, unknown>) {

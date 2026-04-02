@@ -193,13 +193,26 @@ function scoreAudio(
   return score;
 }
 
-function selectPreferredAudio(
+function buildAudioCandidateUrls(
   audios: NonNullable<PlayUrlResponse["data"]>["dash"]["audio"] = [],
 ) {
-  if (!audios.length) return null;
-  return [...audios].sort(
+  if (!audios.length) {
+    return [] as string[];
+  }
+
+  const orderedAudios = [...audios].sort(
     (left, right) => scoreAudio(right) - scoreAudio(left),
-  )[0];
+  );
+  const preferredAudio = orderedAudios[0];
+
+  return uniq([
+    preferredAudio?.baseUrl,
+    ...(preferredAudio?.backupUrl ?? []),
+    ...orderedAudios.slice(1).flatMap((audio) => [
+      audio.baseUrl,
+      ...(audio.backupUrl ?? []),
+    ]),
+  ].map(normalizeHttps));
 }
 
 function uniq(items: Array<string | null | undefined>) {
@@ -520,11 +533,13 @@ export async function resolveTrackStream(track: Track): Promise<Track> {
     throw new Error(response.message || "播放地址获取失败");
   }
 
-  const selectedAudio = selectPreferredAudio(response.data.dash?.audio);
-  const streamUrl = normalizeHttps(
-    selectedAudio?.baseUrl || response.data.durl?.[0]?.url,
+  const dashCandidates = buildAudioCandidateUrls(response.data.dash?.audio);
+  const progressiveCandidates = uniq(
+    (response.data.durl ?? []).map((item) => normalizeHttps(item.url)),
   );
-  const backupStreamUrls = (selectedAudio?.backupUrl ?? []).map(normalizeHttps);
+  const streamCandidates = uniq([...dashCandidates, ...progressiveCandidates]);
+  const streamUrl = streamCandidates[0];
+  const backupStreamUrls = streamCandidates.slice(1);
 
   if (!streamUrl) {
     throw new Error("没有可用的音频流");
