@@ -9,35 +9,22 @@ import {
 import { loadState } from "./lib/storage";
 import type { PlaybackSnapshot } from "./lib/types";
 
-function playbackLabel(state?: string) {
-  switch (state) {
-    case "playing":
-      return "正在播放";
-    case "paused":
-      return "已暂停";
-    case "loading":
-      return "加载中";
-    case "error":
-      return "播放出错";
-    default:
-      return "尚未开始";
+function formatUpdatedAt(isoString?: string) {
+  if (!isoString) {
+    return "";
   }
+
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
 }
 
 function ActionRow(props: PlaybackSnapshot) {
-  const playPauseTitle =
-    props.playbackState === "playing"
-      ? "暂停"
-      : props.playbackState === "loading"
-        ? "加载中"
-        : "继续";
-  const playPauseIcon =
-    props.playbackState === "playing"
-      ? "pause.fill"
-      : props.playbackState === "loading"
-        ? "hourglass"
-        : "play.fill";
-
   return (
     <HStack spacing={8}>
       <Button
@@ -46,8 +33,8 @@ function ActionRow(props: PlaybackSnapshot) {
         intent={PreviousTrackIntent(undefined)}
       />
       <Button
-        title={playPauseTitle}
-        systemImage={playPauseIcon}
+        title="播放/暂停"
+        systemImage="playpause.fill"
         intent={TogglePlaybackIntent(undefined)}
       />
       <Button
@@ -81,6 +68,8 @@ function WidgetView() {
     return <EmptyWidget />;
   }
 
+  const updatedAt = formatUpdatedAt(snapshot.updatedAt);
+
   return (
     <VStack alignment={"leading"} spacing={8}>
       <Text font={"headline"}>
@@ -90,12 +79,15 @@ function WidgetView() {
         {snapshot.currentTrack?.artist || snapshot.ownerName || "Azusa"}
       </Text>
       <Text font={"caption"} foregroundColor={"secondary"}>
-        {playbackLabel(snapshot.playbackState)} · {snapshot.currentIndex >= 0
+        {snapshot.currentIndex >= 0
           ? `${snapshot.currentIndex + 1}/${snapshot.queueLength}`
           : `共 ${snapshot.queueLength} 首`}
       </Text>
       <Text font={"caption"} foregroundColor={"secondary"}>
         {snapshot.sourceTitle}
+      </Text>
+      <Text font={"caption2"} foregroundColor={"tertiary"}>
+        {updatedAt ? `最近同步 ${updatedAt}` : "桌面卡片刷新会慢几秒"}
       </Text>
       <ActionRow {...snapshot} />
     </VStack>
