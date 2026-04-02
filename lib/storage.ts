@@ -3,6 +3,7 @@ import { IntentMemoryStorage, Storage } from "scripting";
 import { coerceSourceDescriptor, parseSourceInput } from "./sources";
 import type {
   PendingExternalCommand,
+  PlaybackMode,
   PersistedState,
   PlaybackSnapshot,
   SourceDescriptor,
@@ -19,6 +20,7 @@ type DownloadIndex = Record<string, string>;
 
 const defaultState: PersistedState = {
   lastInput: "",
+  playbackMode: "normal",
   queue: [],
   recentSources: [],
   playbackSnapshot: null,
@@ -176,6 +178,10 @@ function normalizeSnapshot(value: unknown): PlaybackSnapshot | null {
       typeof snapshot.playbackState === "string"
         ? snapshot.playbackState
         : "idle",
+    playbackMode:
+      typeof snapshot.playbackMode === "string"
+        ? (snapshot.playbackMode as PlaybackMode)
+        : "normal",
     playbackDetail:
       typeof snapshot.playbackDetail === "string"
         ? snapshot.playbackDetail
@@ -247,6 +253,10 @@ function normalizeState(value: unknown): PersistedState {
 
   return {
     lastInput: sourceDescriptor?.input ?? lastInput,
+    playbackMode:
+      typeof raw.playbackMode === "string"
+        ? (raw.playbackMode as PlaybackMode)
+        : defaultState.playbackMode,
     sourceTitle:
       typeof raw.sourceTitle === "string" ? raw.sourceTitle : undefined,
     sourceDescriptor,
@@ -305,6 +315,7 @@ export function updateState(
 export function persistPlayerState(input: {
   sourceDescriptor?: SourceDescriptor;
   sourceTitle?: string;
+  playbackMode?: PlaybackMode;
   queue: Track[];
   currentTrackId?: string;
   playbackSnapshot?: PlaybackSnapshot | null;
@@ -312,6 +323,7 @@ export function persistPlayerState(input: {
   return updateState((current) => ({
     ...current,
     lastInput: input.sourceDescriptor?.input ?? current.lastInput,
+    playbackMode: input.playbackMode ?? current.playbackMode,
     sourceDescriptor: input.sourceDescriptor ?? current.sourceDescriptor,
     sourceTitle: input.sourceTitle ?? current.sourceTitle,
     queue: input.queue,

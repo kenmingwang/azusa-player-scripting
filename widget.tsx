@@ -25,20 +25,23 @@ function formatUpdatedAt(isoString?: string) {
 }
 
 function ActionRow(props: PlaybackSnapshot) {
+  const playPauseTitle =
+    props.playbackState === "playing" ? "停" : "播";
+
   return (
     <HStack spacing={8}>
       <Button
-        title="上一首"
+        title="上"
         systemImage="backward.fill"
         intent={PreviousTrackIntent(undefined)}
       />
       <Button
-        title="播放/暂停"
+        title={playPauseTitle}
         systemImage="playpause.fill"
         intent={TogglePlaybackIntent(undefined)}
       />
       <Button
-        title="下一首"
+        title="下"
         systemImage="forward.fill"
         intent={NextTrackIntent(undefined)}
       />

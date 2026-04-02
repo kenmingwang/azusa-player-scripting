@@ -49,6 +49,7 @@ async function tryDirectTransportControl(
   }
 
   const player = getSharedPlayer();
+  player.setPlaybackMode(state.playbackMode ?? "normal");
   let queue = [...state.queue];
   let currentTrackId =
     state.currentTrackId ?? state.playbackSnapshot?.currentTrack?.id;
@@ -149,12 +150,14 @@ async function tryDirectTransportControl(
       currentIndex,
       currentTrack,
       playbackState,
+      playbackMode: state.playbackMode ?? "normal",
       playbackDetail,
     });
 
     persistPlayerState({
       sourceDescriptor: source,
       sourceTitle: snapshot.sourceTitle,
+      playbackMode: state.playbackMode ?? "normal",
       queue,
       currentTrackId,
       playbackSnapshot: snapshot,

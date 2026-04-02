@@ -43,6 +43,7 @@ import {
 } from "./sources";
 import type {
   PendingExternalCommand,
+  PlaybackMode,
   PlaybackUiState,
   SourceDescriptor,
   Track,
@@ -172,6 +173,60 @@ function keepAliveStateLabel(
   return "前台运行中";
 }
 
+const PLAYBACK_MODE_ORDER: PlaybackMode[] = [
+  "normal",
+  "repeatAll",
+  "repeatOne",
+  "shuffle",
+];
+
+function playbackModeLabel(mode: PlaybackMode) {
+  switch (mode) {
+    case "repeatAll":
+      return "列表循环";
+    case "repeatOne":
+      return "单曲循环";
+    case "shuffle":
+      return "随机播放";
+    case "normal":
+    default:
+      return "顺序播放";
+  }
+}
+
+function playbackModeHint(mode: PlaybackMode) {
+  switch (mode) {
+    case "repeatAll":
+      return "播到队尾后从头继续";
+    case "repeatOne":
+      return "当前歌曲结束后重播";
+    case "shuffle":
+      return "切歌时随机选下一首";
+    case "normal":
+    default:
+      return "播到队尾后停止";
+  }
+}
+
+function nextPlaybackMode(mode: PlaybackMode) {
+  const currentIndex = PLAYBACK_MODE_ORDER.indexOf(mode);
+  return PLAYBACK_MODE_ORDER[
+    currentIndex >= 0
+      ? (currentIndex + 1) % PLAYBACK_MODE_ORDER.length
+      : 0
+  ];
+}
+
+function formatDuration(seconds?: number) {
+  if (!seconds || seconds <= 0) {
+    return "";
+  }
+
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
 export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const persistedState = loadState();
   const requestedInput = props.initialInput?.trim() || "";
@@ -238,8 +293,17 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [recentSources, setRecentSources] = useState(
     persistedState.recentSources ?? [],
   );
-  const [playbackState, setPlaybackState] = useState("idle" as PlaybackUiState);
-  const [playbackDetail, setPlaybackDetail] = useState("");
+  const [playbackState, setPlaybackState] = useState(
+    (initialSnapshot?.playbackState ?? "idle") as PlaybackUiState,
+  );
+  const [playbackMode, setPlaybackMode] = useState(
+    (persistedState.playbackMode ??
+      initialSnapshot?.playbackMode ??
+      "normal") as PlaybackMode,
+  );
+  const [playbackDetail, setPlaybackDetail] = useState(
+    initialSnapshot?.playbackDetail || "",
+  );
   const [currentIndex, setCurrentIndex] = useState(initialCurrentIndex);
   const [currentTrack, setCurrentTrack] = useState(initialCurrentTrack as Track | null);
   const [playerMessage] = useState(getNativePlayerCompatibilityMessage());
@@ -373,6 +437,18 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
   }
 
+  async function playRandomTrack() {
+    if (!tracks.length) {
+      return;
+    }
+
+    const randomIndex =
+      tracks.length === 1
+        ? 0
+        : Math.floor(Math.random() * tracks.length);
+    await playTrackAt(randomIndex);
+  }
+
   async function handlePrimaryAction() {
     if (!currentTrack) {
       await playTrackAt(0);
@@ -384,6 +460,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : String(toggleError));
     }
+  }
+
+  function cyclePlaybackMode() {
+    setPlaybackMode((current) => nextPlaybackMode(current));
   }
 
   async function processPendingCommand() {
@@ -471,6 +551,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   }
 
   useEffect(() => {
+    player.setPlaybackMode(playbackMode);
     player.bind({
       onQueueChange: (queue) => {
         setTracks(queue);
@@ -543,6 +624,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     void syncBackgroundKeepAlive();
   }, [currentTrack?.id, playbackState]);
 
+  useEffect(() => {
+    player.setPlaybackMode(playbackMode);
+  }, [playbackMode]);
+
   const playbackSnapshot = useMemo(
     () =>
       buildPlaybackSnapshot({
@@ -554,6 +639,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         currentIndex,
         currentTrack,
         playbackState,
+        playbackMode,
         playbackDetail,
       }),
     [
@@ -565,6 +651,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       currentIndex,
       currentTrack?.id,
       playbackState,
+      playbackMode,
       playbackDetail,
     ],
   );
@@ -573,6 +660,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     persistPlayerState({
       sourceDescriptor: activeSource,
       sourceTitle,
+      playbackMode,
       queue: tracks,
       currentTrackId: currentTrack?.id,
       playbackSnapshot,
@@ -587,6 +675,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     currentTrack?.id,
     currentIndex,
     playbackState,
+    playbackMode,
     playbackDetail,
   ]);
 
@@ -663,6 +752,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   );
   const pendingCommand = loadState().pendingExternalCommand;
   const keepAliveLabel = keepAliveStateLabel(scenePhase, keepAliveState as any);
+  const modeLabel = playbackModeLabel(playbackMode);
+  const modeHint = playbackModeHint(playbackMode);
+  const cachedTrackCount = tracks.filter((track) => Boolean(track.localFilePath)).length;
+  const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
 
   return (
     <NavigationStack>
@@ -671,50 +764,69 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         navigationBarTitleDisplayMode={"large"}
         listStyle={"plain"}
       >
-        <Section header={<Text font={"caption"}>正在播放</Text>}>
-          <HStack spacing={14}>
+        <Section header={<Text font={"caption"}>现在播放</Text>}>
+          <HStack spacing={16}>
             <Circle
-              fill={playbackState === "playing" ? "systemBlue" : "systemGray4"}
-              frame={{ width: 56, height: 56 }}
+              fill={playbackState === "playing" ? "systemBlue" : "systemGray3"}
+              frame={{ width: 68, height: 68 }}
             />
-            <VStack alignment={"leading"} spacing={4}>
-              <Text font={"title3"}>
+            <VStack alignment={"leading"} spacing={5}>
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                {playbackLabel}
+              </Text>
+              <Text font={"title2"}>
                 {currentTrack?.title || sourceTitle}
               </Text>
               <Text font={"subheadline"} foregroundColor={"secondary"}>
-                {currentTrack?.artist || ownerName || "Bilibili 导入播放器"}
-              </Text>
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                {playbackLabel}
+                {currentTrack?.artist || ownerName || "Azusa"}
               </Text>
             </VStack>
           </HStack>
 
-          <VStack alignment={"leading"} spacing={6}>
+          <VStack alignment={"leading"} spacing={5}>
             <Text font={"headline"}>{sourceTitle}</Text>
             <Text font={"subheadline"} foregroundColor={"secondary"}>
               {currentSourceKind} · {currentSourceSummary}
             </Text>
             <Text font={"caption"} foregroundColor={"secondary"}>
-              {queueSummary}
+              {queueSummary}{currentTrackDuration ? ` · ${currentTrackDuration}` : ""}
+            </Text>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {modeLabel} · {modeHint}
+            </Text>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              已缓存 {cachedTrackCount} / {tracks.length} 首
             </Text>
           </VStack>
 
           <HStack spacing={10}>
-            <Button
-              title={playLoading ? "准备中..." : primaryButtonTitle}
-              buttonStyle="borderedProminent"
-              action={() => void handlePrimaryAction()}
-            />
             <Button
               title="上一首"
               buttonStyle="bordered"
               action={() => void skipBy(-1)}
             />
             <Button
+              title={playLoading ? "准备中..." : primaryButtonTitle}
+              buttonStyle="borderedProminent"
+              action={() => void handlePrimaryAction()}
+            />
+            <Button
               title="下一首"
               buttonStyle="bordered"
               action={() => void skipBy(1)}
+            />
+          </HStack>
+
+          <HStack spacing={10}>
+            <Button
+              title={modeLabel}
+              buttonStyle="bordered"
+              action={() => cyclePlaybackMode()}
+            />
+            <Button
+              title="随机来一首"
+              buttonStyle="bordered"
+              action={() => void playRandomTrack()}
             />
           </HStack>
 
@@ -738,7 +850,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
           ) : null}
         </Section>
 
-        <Section header={<Text font={"caption"}>来源</Text>}>
+        <Section header={<Text font={"caption"}>来源与导入</Text>}>
           <VStack alignment={"leading"} spacing={4}>
             <Text font={"headline"}>{sourceShortLabel(activeSource)}</Text>
             <Text font={"subheadline"} foregroundColor={"secondary"}>
@@ -758,33 +870,30 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               action={() => void loadSource()}
             />
           </HStack>
-
-          {visibleRecentSources.length > 0 ? (
-            <VStack alignment={"leading"} spacing={6}>
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                最近来源
-              </Text>
-              {visibleRecentSources.slice(0, 5).map((source) => (
-                <Button
-                  action={() => void loadSource(source)}
-                  key={source.input}>
-                  <HStack spacing={12}>
-                    <VStack alignment={"leading"} spacing={3}>
-                      <Text font={"body"}>{sourceShortLabel(source)}</Text>
-                      <Text font={"caption"} foregroundColor={"secondary"}>
-                        {sourceKindLabel(source.kind)} · {sourceSecondaryLabel(source)}
-                      </Text>
-                    </VStack>
-                    <Spacer />
-                    <Text font={"caption"} foregroundColor={"systemBlue"}>
-                      打开
-                    </Text>
-                  </HStack>
-                </Button>
-              ))}
-            </VStack>
-          ) : null}
         </Section>
+
+        {visibleRecentSources.length > 0 ? (
+          <Section header={<Text font={"caption"}>最近来源</Text>}>
+            {visibleRecentSources.slice(0, 5).map((source) => (
+              <Button
+                action={() => void loadSource(source)}
+                key={source.input}>
+                <HStack spacing={12}>
+                  <VStack alignment={"leading"} spacing={3}>
+                    <Text font={"body"}>{sourceShortLabel(source)}</Text>
+                    <Text font={"caption"} foregroundColor={"secondary"}>
+                      {sourceKindLabel(source.kind)} · {sourceSecondaryLabel(source)}
+                    </Text>
+                  </VStack>
+                  <Spacer />
+                  <Text font={"caption"} foregroundColor={"systemBlue"}>
+                    打开
+                  </Text>
+                </HStack>
+              </Button>
+            ))}
+          </Section>
+        ) : null}
 
         <Section header={<Text font={"caption"}>播放队列</Text>}>
           {tracks.length === 0 ? (
@@ -797,6 +906,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
           ) : (
             tracks.map((track: Track, index: number) => {
               const isActive = currentIndex === index;
+              const duration = formatDuration(track.durationSeconds);
+              const isCached = Boolean(track.localFilePath);
               return (
                 <Button action={() => void playTrackAt(index)} key={track.id}>
                   <HStack spacing={12}>
@@ -805,7 +916,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                         {index + 1}. {track.title}
                       </Text>
                       <Text font={"caption"} foregroundColor={"secondary"}>
-                        {track.artist} · CID {track.cid}
+                        {track.artist}
+                        {duration ? ` · ${duration}` : ""}
+                        {isCached ? " · 已缓存" : ""}
+                        {" · "}
+                        CID {track.cid}
                       </Text>
                     </VStack>
                     <Spacer />

@@ -4,6 +4,7 @@ import { setPendingExternalCommand } from "./storage";
 import type {
   PendingExternalCommand,
   PendingExternalCommandType,
+  PlaybackMode,
   PlaybackSnapshot,
   PlaybackUiState,
   SourceDescriptor,
@@ -46,6 +47,7 @@ export function buildPlaybackSnapshot(input: {
   currentIndex: number;
   currentTrack: Track | null;
   playbackState: PlaybackUiState;
+  playbackMode: PlaybackMode;
   playbackDetail?: string;
 }): PlaybackSnapshot {
   return {
@@ -69,6 +71,7 @@ export function buildPlaybackSnapshot(input: {
         }
       : undefined,
     playbackState: input.playbackState,
+    playbackMode: input.playbackMode,
     playbackDetail: input.playbackDetail,
     updatedAt: new Date().toISOString(),
   };

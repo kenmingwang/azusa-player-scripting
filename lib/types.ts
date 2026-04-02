@@ -5,6 +5,12 @@ export type PlaybackUiState =
   | "paused"
   | "error";
 
+export type PlaybackMode =
+  | "normal"
+  | "repeatAll"
+  | "repeatOne"
+  | "shuffle";
+
 export type SourceKind = "video" | "favorite" | "collection" | "channel";
 export type CollectionKind = "series" | "season";
 
@@ -82,6 +88,7 @@ export type PlaybackSnapshot = {
   currentIndex: number;
   currentTrack?: TrackPreview;
   playbackState: PlaybackUiState;
+  playbackMode: PlaybackMode;
   playbackDetail?: string;
   updatedAt: string;
 };
@@ -106,6 +113,7 @@ export type PersistedState = {
   sourceTitle?: string;
   sourceDescriptor?: SourceDescriptor;
   recentSources?: SourceDescriptor[];
+  playbackMode?: PlaybackMode;
   queue: Track[];
   currentTrackId?: string;
   playbackSnapshot?: PlaybackSnapshot | null;

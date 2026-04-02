@@ -7,7 +7,7 @@ import {
 } from "scripting";
 
 import { resolveTrackStream } from "./api";
-import type { PlaybackUiState, Track } from "./types";
+import type { PlaybackMode, PlaybackUiState, Track } from "./types";
 
 type PlayerBindings = {
   onQueueChange?: (queue: Track[]) => void;
@@ -58,6 +58,7 @@ class AzusaScriptingPlayer {
   private sourceCandidates: string[] = [];
   private sourceAttemptIndex = 0;
   private sourceRefreshCount = 0;
+  private playbackMode: PlaybackMode = "normal";
   private playbackState: PlaybackUiState = "idle";
   private playbackDetail = "";
   private bindings: PlayerBindings = {};
@@ -113,8 +114,16 @@ class AzusaScriptingPlayer {
     return this.playbackState;
   }
 
+  getPlaybackMode() {
+    return this.playbackMode;
+  }
+
   getPlaybackDetail() {
     return this.playbackDetail;
+  }
+
+  setPlaybackMode(mode: PlaybackMode) {
+    this.playbackMode = mode;
   }
 
   async playIndex(index: number) {
@@ -183,8 +192,8 @@ class AzusaScriptingPlayer {
   }
 
   async skip(delta: number) {
-    const nextIndex = this.currentIndex + delta;
-    if (nextIndex < 0 || nextIndex >= this.queue.length) {
+    const nextIndex = this.resolveManualSkipIndex(delta);
+    if (nextIndex < 0) {
       this.pause();
       return;
     }
@@ -262,7 +271,7 @@ class AzusaScriptingPlayer {
     };
 
     this.player.onEnded = () => {
-      void this.skip(1);
+      void this.handleTrackEnded();
     };
 
     this.player.onError = (message: string) => {
@@ -279,6 +288,16 @@ class AzusaScriptingPlayer {
 
     this.emitState("error", message);
     this.bindings.onError?.(message);
+  }
+
+  private async handleTrackEnded() {
+    const nextIndex = this.resolveAutoAdvanceIndex();
+    if (nextIndex < 0) {
+      this.pause();
+      return;
+    }
+
+    await this.playIndex(nextIndex);
   }
 
   private async prepareTrackForPlayback(
@@ -339,6 +358,68 @@ class AzusaScriptingPlayer {
     }
 
     return false;
+  }
+
+  private resolveManualSkipIndex(delta: number) {
+    if (!this.queue.length) {
+      return -1;
+    }
+
+    if (this.playbackMode === "shuffle") {
+      return this.pickRandomQueueIndex();
+    }
+
+    const nextIndex = this.currentIndex + delta;
+    if (nextIndex < 0 || nextIndex >= this.queue.length) {
+      if (this.playbackMode === "repeatAll") {
+        return nextIndex < 0 ? this.queue.length - 1 : 0;
+      }
+      return -1;
+    }
+
+    return nextIndex;
+  }
+
+  private resolveAutoAdvanceIndex() {
+    if (!this.queue.length) {
+      return -1;
+    }
+
+    if (this.playbackMode === "repeatOne") {
+      return this.currentIndex >= 0 ? this.currentIndex : 0;
+    }
+
+    if (this.playbackMode === "shuffle") {
+      return this.pickRandomQueueIndex();
+    }
+
+    const nextIndex = this.currentIndex + 1;
+    if (nextIndex < this.queue.length) {
+      return nextIndex;
+    }
+
+    if (this.playbackMode === "repeatAll") {
+      return 0;
+    }
+
+    return -1;
+  }
+
+  private pickRandomQueueIndex() {
+    if (!this.queue.length) {
+      return -1;
+    }
+
+    if (this.queue.length === 1) {
+      return 0;
+    }
+
+    let nextIndex = this.currentIndex;
+    while (nextIndex === this.currentIndex) {
+      nextIndex = Math.floor(Math.random() * this.queue.length);
+    }
+
+    return nextIndex;
   }
 
   private async tryRecoverFromStreamError() {
