@@ -817,7 +817,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         <Section header={<Text font={"caption"}>当前歌单</Text>}>
           <VStack
             alignment={"leading"}
-            spacing={14}
+            spacing={16}
             padding={16}
             background={{
               style: {
@@ -834,11 +834,14 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             <HStack spacing={16}>
               <ArtworkView
                 cover={sourceCover || currentTrack?.cover}
-                size={86}
-                contentMode="fit"
+                width={112}
+                height={72}
+                contentMode="fill"
+                backgroundStyle="none"
+                cornerRadius={20}
                 fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
               />
-              <VStack alignment={"leading"} spacing={4}>
+              <VStack alignment={"leading"} spacing={6}>
                 <Text font={"title3"}>{sourceTitle}</Text>
                 <Text font={"subheadline"} foregroundColor={"secondary"}>
                   {currentSourceKind} · {currentSourceSummary}
@@ -848,21 +851,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 </Text>
               </VStack>
             </HStack>
-            <VStack
-              alignment={"leading"}
-              spacing={4}
-              padding={12}
-              background={{
-                style: {
-                  light: "rgba(15, 23, 42, 0.05)",
-                  dark: "rgba(255, 255, 255, 0.04)",
-                },
-                shape: {
-                  type: "rect",
-                  cornerRadius: 18,
-                  style: "continuous",
-                },
-              }}>
+            <VStack alignment={"leading"} spacing={4}>
               <Text font={"caption"} foregroundColor={"secondary"}>
                 当前曲目
               </Text>
@@ -873,46 +862,23 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               </Text>
             </VStack>
 
-            <NavigationLink
-              destination={
-                <SourceLibraryPage
-                  activeSource={activeSource}
-                  recentSources={visibleRecentSources.slice(0, 8)}
-                  loading={loading}
-                  onPromptSource={promptForSource}
-                  onLoadSource={loadSource}
-                  onLoadDefault={() => loadSource(DEFAULT_SOURCE)}
-                  onReload={() => loadSource()}
-                />
-            }>
-              <HStack
-                spacing={12}
-                padding={12}
-                background={{
-                  style: {
-                    light: "rgba(59, 130, 246, 0.08)",
-                    dark: "rgba(59, 130, 246, 0.12)",
-                  },
-                  shape: {
-                    type: "rect",
-                    cornerRadius: 20,
-                    style: "continuous",
-                  },
-                }}>
-                <VStack alignment={"leading"} spacing={3}>
-                  <Text font={"body"}>歌单库</Text>
-                  <Text font={"caption"} foregroundColor={"secondary"}>
-                    最近来源、导入视频 / 收藏夹 / 合集 / 频道
-                  </Text>
-                </VStack>
-                <Spacer />
-                <Text font={"caption"} foregroundColor={"systemBlue"}>
-                  打开
+            <HStack spacing={12}>
+              <NavigationLink
+                destination={
+                  <SourceLibraryPage
+                    activeSource={activeSource}
+                    recentSources={visibleRecentSources.slice(0, 8)}
+                    loading={loading}
+                    onPromptSource={promptForSource}
+                    onLoadSource={loadSource}
+                    onLoadDefault={() => loadSource(DEFAULT_SOURCE)}
+                    onReload={() => loadSource()}
+                  />
+              }>
+                <Text font={"body"} foregroundColor={"systemBlue"}>
+                  歌单库
                 </Text>
-              </HStack>
-            </NavigationLink>
-
-            <HStack spacing={10}>
+              </NavigationLink>
               <Button
                 title={loading ? "同步中..." : "重新拉取"}
                 buttonStyle="bordered"
@@ -986,59 +952,46 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                   onCyclePlaybackMode={cyclePlaybackMode}
                 />
             }>
-              <VStack
-                alignment={"leading"}
-                spacing={10}
-                padding={12}
-                background={{
-                  style: {
-                    light: "rgba(15, 23, 42, 0.06)",
-                    dark: "rgba(15, 23, 42, 0.22)",
-                  },
-                  shape: {
-                    type: "rect",
-                    cornerRadius: 20,
-                    style: "continuous",
-                  },
-                }}>
-                <HStack spacing={14}>
-                  <ArtworkView
-                    cover={currentTrack?.cover || sourceCover}
-                    size={56}
-                    contentMode="fit"
-                    fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
-                  />
-                  <VStack alignment={"leading"} spacing={4}>
-                    <Text font={"headline"}>
-                      {currentTrackLabel}
-                    </Text>
-                    <Text font={"caption"} foregroundColor={"secondary"}>
-                      {currentTrack?.artist || ownerName || "Azusa"} · {playbackLabel}
-                    </Text>
-                    <Text font={"caption2"} foregroundColor={"secondary"}>
-                      {modeLabel}
-                    </Text>
-                  </VStack>
-                  <Spacer />
-                  <Text font={"caption"} foregroundColor={"systemBlue"}>
-                    打开
+              <HStack spacing={14}>
+                <ArtworkView
+                  cover={currentTrack?.cover || sourceCover}
+                  width={64}
+                  height={64}
+                  contentMode="fill"
+                  backgroundStyle="none"
+                  cornerRadius={18}
+                  fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
+                />
+                <VStack alignment={"leading"} spacing={4}>
+                  <Text font={"headline"}>
+                    {currentTrackLabel}
                   </Text>
-                </HStack>
-
-                {typeof currentProgressValue === "number" && currentDurationSeconds > 0 ? (
-                  <ProgressView
-                    value={currentProgressValue}
-                    total={currentDurationSeconds}
-                    progressViewStyle="linear"
-                  />
-                ) : null}
-                {currentDurationSeconds > 0 ? (
+                  <Text font={"caption"} foregroundColor={"secondary"}>
+                    {currentTrack?.artist || ownerName || "Azusa"} · {playbackLabel}
+                  </Text>
                   <Text font={"caption2"} foregroundColor={"secondary"}>
-                    {formatDuration(currentTime)} / {formatDuration(currentDurationSeconds)}
+                    {modeLabel}
                   </Text>
-                ) : null}
-              </VStack>
+                </VStack>
+                <Spacer />
+                <Text font={"caption"} foregroundColor={"systemBlue"}>
+                  打开
+                </Text>
+              </HStack>
             </NavigationLink>
+
+            {typeof currentProgressValue === "number" && currentDurationSeconds > 0 ? (
+              <ProgressView
+                value={currentProgressValue}
+                total={currentDurationSeconds}
+                progressViewStyle="linear"
+              />
+            ) : null}
+            {currentDurationSeconds > 0 ? (
+              <Text font={"caption2"} foregroundColor={"secondary"}>
+                {formatDuration(currentTime)} / {formatDuration(currentDurationSeconds)}
+              </Text>
+            ) : null}
 
             <HStack spacing={10}>
               <Button

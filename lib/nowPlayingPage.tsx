@@ -137,24 +137,16 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
       <Section>
         <VStack
           alignment={"leading"}
-          spacing={14}
-          padding={16}
-          background={{
-            style: {
-              light: "rgba(248, 250, 252, 0.92)",
-              dark: "rgba(255, 255, 255, 0.05)",
-            },
-            shape: {
-              type: "rect",
-              cornerRadius: 28,
-              style: "continuous",
-            },
-          }}
+          spacing={16}
+          padding={{ top: 12, bottom: 8 }}
           listRowSeparator="hidden">
           <ArtworkView
             cover={props.artworkUrl}
-            size={148}
-            contentMode="fit"
+            width={236}
+            height={236}
+            contentMode="fill"
+            backgroundStyle="none"
+            cornerRadius={28}
             fallbackColor={props.playbackState === "playing" ? "systemBlue" : "systemGray3"}
           />
           <VStack alignment={"leading"} spacing={5}>
@@ -237,18 +229,6 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
         <VStack
           alignment={"leading"}
           spacing={8}
-          padding={16}
-          background={{
-            style: {
-              light: "rgba(250, 245, 255, 0.95)",
-              dark: "rgba(76, 29, 149, 0.14)",
-            },
-            shape: {
-              type: "rect",
-              cornerRadius: 24,
-              style: "continuous",
-            },
-          }}
           listRowSeparator="hidden">
           <Text font={"caption"} foregroundColor={"secondary"}>
             {lyricStatus}
