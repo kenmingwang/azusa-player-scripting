@@ -2,13 +2,8 @@ import { attachDownloadedPaths } from "./storage";
 import { parseSourceInput } from "./sources";
 import type { ImportResult, SourceDescriptor, Track } from "./types";
 
-const BILI_HEADERS = {
-  Referer: "https://www.bilibili.com/",
-  Origin: "https://www.bilibili.com",
-  "User-Agent":
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
-  Accept: "application/json,text/plain,*/*",
-};
+const DEFAULT_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 
 const VIDEO_INFO_URL =
   "https://api.bilibili.com/x/web-interface/view?bvid={bvid}";
@@ -166,7 +161,9 @@ function replaceUrlTokens(
 
 async function fetchJson<T>(url: string, debugLabel: string): Promise<T> {
   const response = await fetch(url, {
-    headers: BILI_HEADERS,
+    headers: requestHeaders(url, {
+      Accept: "application/json,text/plain,*/*",
+    }),
     timeout: 15,
     debugLabel,
   } as any);
@@ -555,6 +552,60 @@ export async function resolveTrackStream(track: Track): Promise<Track> {
   };
 }
 
-export function requestHeaders() {
-  return { ...BILI_HEADERS };
+function refererForUrl(rawUrl?: string) {
+  if (!rawUrl) {
+    return undefined;
+  }
+
+  try {
+    const target = new URL(rawUrl);
+    const host = target.hostname.toLowerCase();
+
+    if (host.endsWith("qq.com")) {
+      return "https://y.qq.com/";
+    }
+
+    if (
+      host.endsWith("bilibili.com") ||
+      host.endsWith("bilivideo.com") ||
+      host.endsWith("bilivideo.cn") ||
+      host.endsWith("hdslb.com")
+    ) {
+      return "https://www.bilibili.com/";
+    }
+  } catch {}
+
+  return undefined;
+}
+
+export function requestHeaders(
+  rawUrl?: string,
+  extraHeaders: Record<string, string | undefined> = {},
+) {
+  const headers: Record<string, string> = {
+    Accept: "*/*",
+    "User-Agent": DEFAULT_USER_AGENT,
+    "Accept-Language": "zh-CN,zh-Hans;q=0.9,en-SG;q=0.8,en;q=0.7",
+  };
+
+  const referer = refererForUrl(rawUrl);
+  if (referer) {
+    headers.Referer = referer;
+  }
+
+  try {
+    const target = rawUrl ? new URL(rawUrl) : null;
+    const host = target?.hostname?.toLowerCase() ?? "";
+    if (host.endsWith("qq.com")) {
+      headers.Origin = "https://y.qq.com";
+    }
+  } catch {}
+
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    if (value) {
+      headers[key] = value;
+    }
+  }
+
+  return headers;
 }

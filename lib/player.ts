@@ -666,7 +666,7 @@ class AzusaScriptingPlayer {
     }
 
     const response = await fetch(coverUrl, {
-      headers: requestHeaders(),
+      headers: requestHeaders(coverUrl),
       timeout: 15,
       debugLabel: `Artwork ${coverUrl}`,
     } as any);
