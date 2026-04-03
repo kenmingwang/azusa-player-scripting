@@ -43,26 +43,31 @@ function ActionRow(props: PlaybackSnapshot) {
     <HStack
       spacing={10}
       padding={6}
-      glassEffect={true}
+      background={{
+        style: "rgba(255, 255, 255, 0.08)",
+        shape: {
+          type: "capsule",
+        },
+      }}
       clipShape={{
         type: "capsule",
       }}>
       <Button
         title="上"
         systemImage="backward.fill"
-        buttonStyle="glass"
+        buttonStyle="bordered"
         intent={PreviousTrackIntent(undefined)}
       />
       <Button
         title={playPauseTitle}
         systemImage="playpause.fill"
-        buttonStyle="glassProminent"
+        buttonStyle="borderedProminent"
         intent={TogglePlaybackIntent(undefined)}
       />
       <Button
         title="下"
         systemImage="forward.fill"
-        buttonStyle="glass"
+        buttonStyle="bordered"
         intent={NextTrackIntent(undefined)}
       />
     </HStack>
@@ -147,7 +152,14 @@ function WidgetView() {
         {cover ? (
           <ZStack
             frame={{ width: isSmall ? 60 : 68, height: isSmall ? 60 : 68 }}
-            glassEffect={true}
+            background={{
+              style: "rgba(255, 255, 255, 0.08)",
+              shape: {
+                type: "rect",
+                cornerRadius: 18,
+                style: "continuous",
+              },
+            }}
             clipShape={{
               type: "rect",
               cornerRadius: 18,
