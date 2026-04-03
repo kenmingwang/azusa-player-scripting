@@ -81,11 +81,11 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
         </VStack>
       </Section>
 
-      <Section header={<Text font={"caption"}>导入新歌单</Text>}>
-        <Button title="导入视频 / BV" action={() => void props.onPromptSource("video")} />
-        <Button title="导入收藏夹" action={() => void props.onPromptSource("favorite")} />
-        <Button title="导入合集" action={() => void props.onPromptSource("collection")} />
-        <Button title="导入频道" action={() => void props.onPromptSource("channel")} />
+      <Section header={<Text font={"caption"}>辅助入口</Text>}>
+        <Button title="填入视频示例" action={() => setQuery("BV1wr4y1v7TA")} />
+        <Button title="填入收藏夹前缀" action={() => setQuery("favorite:")} />
+        <Button title="填入合集前缀" action={() => setQuery("season:")} />
+        <Button title="填入频道前缀" action={() => setQuery("channel:")} />
         <Button title="切回默认歌单" action={() => void props.onLoadDefault()} />
       </Section>
 

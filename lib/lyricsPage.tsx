@@ -170,6 +170,23 @@ export function LyricsPage(props: LyricsPageProps) {
     () => activeLyricLineIndex(parsedLyrics, progress.currentTime),
     [parsedLyrics, progress.currentTime],
   );
+  const visibleLines = useMemo(() => {
+    if (!parsedLyrics.lines.length) {
+      return [] as Array<{ line: (typeof parsedLyrics.lines)[number]; index: number }>;
+    }
+
+    if (!parsedLyrics.timed || activeIndex < 0) {
+      return parsedLyrics.lines
+        .slice(0, 12)
+        .map((line, index) => ({ line, index }));
+    }
+
+    const start = Math.max(0, activeIndex - 2);
+    const end = Math.min(parsedLyrics.lines.length, activeIndex + 3);
+    return parsedLyrics.lines
+      .slice(start, end)
+      .map((line, offset) => ({ line, index: start + offset }));
+  }, [parsedLyrics, activeIndex]);
 
   async function applyOnlineLyrics(option: LyricSearchOption, auto = false) {
     if (!track) {
@@ -361,7 +378,7 @@ export function LyricsPage(props: LyricsPageProps) {
             </Text>
           </VStack>
         ) : (
-          parsedLyrics.lines.map((line, index) => {
+          visibleLines.map(({ line, index }) => {
             const isActive = activeIndex === index;
             return (
               <VStack

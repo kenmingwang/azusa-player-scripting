@@ -4,6 +4,7 @@ import {
   NavigationLink,
   ProgressView,
   Section,
+  Spacer,
   Text,
   VStack,
   useEffect,
@@ -162,19 +163,22 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
               type: "rect",
               cornerRadius: 24,
               style: "continuous",
-              },
-            }}
+            },
+          }}
           listRowSeparator="hidden">
-          <TransportControls
-            playbackState={props.playbackState}
-            onPrevious={() => void props.onPrevious()}
-            onPrimaryAction={() => void props.onPrimaryAction()}
-            onNext={() => void props.onNext()}
-          />
-          <PlaybackModeControl
-            playbackMode={props.playbackMode}
-            onCyclePlaybackMode={props.onCyclePlaybackMode}
-          />
+          <HStack spacing={12}>
+            <TransportControls
+              playbackState={props.playbackState}
+              onPrevious={() => void props.onPrevious()}
+              onPrimaryAction={() => void props.onPrimaryAction()}
+              onNext={() => void props.onNext()}
+            />
+            <Spacer />
+            <PlaybackModeControl
+              playbackMode={props.playbackMode}
+              onCyclePlaybackMode={props.onCyclePlaybackMode}
+            />
+          </HStack>
         </VStack>
       </Section>
 

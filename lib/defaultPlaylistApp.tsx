@@ -947,17 +947,20 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               </Text>
             ) : null}
 
-            <TransportControls
-              compact
-              playbackState={playbackState}
-              onPrevious={() => void skipBy(-1)}
-              onPrimaryAction={() => void handlePrimaryAction()}
-              onNext={() => void skipBy(1)}
-            />
-            <PlaybackModeControl
-              playbackMode={playbackMode}
-              onCyclePlaybackMode={cyclePlaybackMode}
-            />
+            <HStack spacing={10}>
+              <TransportControls
+                compact
+                playbackState={playbackState}
+                onPrevious={() => void skipBy(-1)}
+                onPrimaryAction={() => void handlePrimaryAction()}
+                onNext={() => void skipBy(1)}
+              />
+              <Spacer />
+              <PlaybackModeControl
+                playbackMode={playbackMode}
+                onCyclePlaybackMode={cyclePlaybackMode}
+              />
+            </HStack>
           </VStack>
         </Section>
 

@@ -79,6 +79,9 @@ class AzusaScriptingPlayer {
     (snapshot: PlaybackProgressSnapshot) => void
   >();
   private lastNowPlayingSecond = -1;
+  private progressTrackId?: string;
+  private progressAnchorTime = 0;
+  private progressAnchorAt = 0;
 
   constructor() {
     this.setupMediaCommands();
@@ -118,8 +121,12 @@ class AzusaScriptingPlayer {
     return this.currentIndex;
   }
 
-  getCurrentTime() {
+  private readNativeCurrentTime() {
     return this.player?.currentTime ?? 0;
+  }
+
+  getCurrentTime() {
+    return this.getProgressSnapshot().currentTime;
   }
 
   getDuration() {
@@ -130,10 +137,28 @@ class AzusaScriptingPlayer {
     const currentTrack = this.getCurrentTrack();
     const isLoadedCurrentTrack =
       Boolean(currentTrack?.id) && this.loadedTrackId === currentTrack?.id;
+    const duration = currentTrack?.durationSeconds ?? this.getDuration() ?? 0;
+    let currentTime = 0;
+
+    if (this.progressTrackId && currentTrack?.id === this.progressTrackId) {
+      currentTime = this.progressAnchorTime;
+
+      if (
+        this.playbackState === "playing" &&
+        this.progressAnchorAt > 0
+      ) {
+        currentTime += (Date.now() - this.progressAnchorAt) / 1000;
+      }
+    } else if (isLoadedCurrentTrack) {
+      currentTime = this.readNativeCurrentTime();
+    }
 
     return {
-      currentTime: isLoadedCurrentTrack ? this.getCurrentTime() : 0,
-      duration: currentTrack?.durationSeconds ?? this.getDuration() ?? 0,
+      currentTime:
+        duration > 0
+          ? Math.max(0, Math.min(currentTime, duration))
+          : Math.max(0, currentTime),
+      duration,
     };
   }
 
@@ -173,6 +198,9 @@ class AzusaScriptingPlayer {
 
     const loadToken = ++this.loadToken;
     this.currentIndex = index;
+    this.progressTrackId = this.queue[index]?.id;
+    this.progressAnchorTime = 0;
+    this.progressAnchorAt = 0;
     this.bindings.onCurrentTrackChange?.(this.queue[index], this.currentIndex);
     this.emitState("loading", "正在准备播放");
     this.emitProgress(true);
@@ -191,6 +219,7 @@ class AzusaScriptingPlayer {
 
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
+      this.startProgressClock(this.readNativeCurrentTime());
       this.player!.play();
       this.emitState("playing");
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
@@ -199,6 +228,7 @@ class AzusaScriptingPlayer {
 
   pause() {
     if (!this.player) return;
+    this.freezeProgressClock();
     this.player.pause();
     this.emitState("paused");
   }
@@ -213,6 +243,7 @@ class AzusaScriptingPlayer {
       return;
     }
 
+    this.startProgressClock();
     this.player.play();
     this.emitState("playing");
   }
@@ -239,6 +270,9 @@ class AzusaScriptingPlayer {
     this.player.stop();
     this.loadedTrackId = undefined;
     this.activeTrackId = undefined;
+    this.progressTrackId = undefined;
+    this.progressAnchorTime = 0;
+    this.progressAnchorAt = 0;
     this.sourceCandidates = [];
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
@@ -258,6 +292,9 @@ class AzusaScriptingPlayer {
     }
     this.loadedTrackId = undefined;
     this.activeTrackId = undefined;
+    this.progressTrackId = undefined;
+    this.progressAnchorTime = 0;
+    this.progressAnchorAt = 0;
     this.sourceCandidates = [];
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
@@ -271,8 +308,10 @@ class AzusaScriptingPlayer {
     this.playbackState = state;
     this.playbackDetail = detail ?? "";
     if (state === "playing") {
+      this.startProgressClock();
       this.startTicker();
     } else {
+      this.freezeProgressClock();
       this.stopTicker();
     }
     this.bindings.onStateChange?.(state, detail);
@@ -526,6 +565,30 @@ class AzusaScriptingPlayer {
       }
       this.updateTimer = undefined;
     }
+  }
+
+  private startProgressClock(baseTime?: number) {
+    const currentTrack = this.getCurrentTrack();
+    if (!currentTrack) {
+      return;
+    }
+
+    this.progressTrackId = currentTrack.id;
+    this.progressAnchorTime =
+      typeof baseTime === "number"
+        ? Math.max(baseTime, 0)
+        : Math.max(this.progressAnchorTime, this.readNativeCurrentTime(), 0);
+    this.progressAnchorAt = Date.now();
+  }
+
+  private freezeProgressClock(baseTime?: number) {
+    const currentTrack = this.getCurrentTrack();
+    this.progressTrackId = currentTrack?.id;
+    this.progressAnchorTime =
+      typeof baseTime === "number"
+        ? Math.max(baseTime, 0)
+        : Math.max(this.getProgressSnapshot().currentTime, 0);
+    this.progressAnchorAt = 0;
   }
 
   private emitProgress(forceUpdateNowPlaying = false) {
