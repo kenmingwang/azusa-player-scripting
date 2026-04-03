@@ -24,6 +24,7 @@ import {
   loadTrackLyricsEntry,
   saveTrackLyricsEntry,
 } from "./storage";
+import { usePlayerProgress } from "./usePlayerProgress";
 import type { LyricSearchOption, Track, TrackLyricsEntry } from "./types";
 
 type LyricsPageProps = {
@@ -61,7 +62,7 @@ function defaultSearchKey(track: Track | null) {
 export function LyricsPage(props: LyricsPageProps) {
   const track = props.track;
   const player = getSharedPlayer();
-  const [progress, setProgress] = useState(player.getProgressSnapshot());
+  const progress = usePlayerProgress(player);
   const [lyricsEntry, setLyricsEntry] = useState(
     (track ? loadTrackLyricsEntry(trackStorageInput(track)) : null) as
       | TrackLyricsEntry
@@ -75,12 +76,6 @@ export function LyricsPage(props: LyricsPageProps) {
   const [message, setMessage] = useState("");
   const [searchNonce, setSearchNonce] = useState(0);
   const [autoApplyAllowed, setAutoApplyAllowed] = useState(true);
-
-  useEffect(() => {
-    return player.subscribeProgress((snapshot) => {
-      setProgress(snapshot);
-    });
-  }, []);
 
   useEffect(() => {
     if (!track) {
@@ -181,8 +176,8 @@ export function LyricsPage(props: LyricsPageProps) {
         .map((line, index) => ({ line, index }));
     }
 
-    const start = Math.max(0, activeIndex - 2);
-    const end = Math.min(parsedLyrics.lines.length, activeIndex + 3);
+    const start = Math.max(0, activeIndex - 4);
+    const end = Math.min(parsedLyrics.lines.length, activeIndex + 5);
     return parsedLyrics.lines
       .slice(start, end)
       .map((line, offset) => ({ line, index: start + offset }));

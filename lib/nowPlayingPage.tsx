@@ -22,6 +22,7 @@ import {
   playbackModeLabel,
 } from "./playbackControls";
 import { loadTrackLyrics } from "./storage";
+import { usePlayerProgress } from "./usePlayerProgress";
 import type { PlaybackMode, PlaybackUiState, Track } from "./types";
 
 type NowPlayingPageProps = {
@@ -61,13 +62,7 @@ function displayTrackTitle(track: Track | null, sourceTitle: string) {
 
 export function NowPlayingPage(props: NowPlayingPageProps) {
   const player = getSharedPlayer();
-  const [progress, setProgress] = useState(player.getProgressSnapshot());
-
-  useEffect(() => {
-    return player.subscribeProgress((snapshot) => {
-      setProgress(snapshot);
-    });
-  }, []);
+  const progress = usePlayerProgress(player);
 
   const duration = progress.duration || props.currentTrack?.durationSeconds || 0;
   const progressText = `${formatDuration(progress.currentTime)} / ${formatDuration(duration)}`;
@@ -173,11 +168,11 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
               onPrimaryAction={() => void props.onPrimaryAction()}
               onNext={() => void props.onNext()}
             />
-            <Spacer />
             <PlaybackModeControl
               playbackMode={props.playbackMode}
               onCyclePlaybackMode={props.onCyclePlaybackMode}
             />
+            <Spacer />
           </HStack>
         </VStack>
       </Section>

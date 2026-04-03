@@ -36,6 +36,7 @@ import {
   getNativePlayerCompatibilityMessage,
   getSharedPlayer,
 } from "./player";
+import { usePlayerProgress } from "./usePlayerProgress";
 import { SourceLibraryPage } from "./sourceLibraryPage";
 import {
   clearPendingExternalCommand,
@@ -317,7 +318,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     ScriptApi?.env === "index" ? "idle" : "unsupported",
   );
   const [queueQuery, setQueueQuery] = useState("");
-  const [progress, setProgress] = useState(player.getProgressSnapshot());
+  const progress = usePlayerProgress(player);
 
   async function loadSource(nextSource?: SourceDescriptor) {
     const source = nextSource || activeSource || DEFAULT_SOURCE;
@@ -621,12 +622,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       }
     };
   }, [activeSource.input, tracks.length, currentTrack?.id, loading, playLoading]);
-
-  useEffect(() => {
-    return player.subscribeProgress((snapshot) => {
-      setProgress(snapshot);
-    });
-  }, []);
 
   useEffect(() => {
     void syncBackgroundKeepAlive();
