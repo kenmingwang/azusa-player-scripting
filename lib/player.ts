@@ -9,7 +9,12 @@ import {
 } from "scripting";
 
 import { requestHeaders, resolveTrackStream } from "./api";
-import type { PlaybackMode, PlaybackUiState, Track } from "./types";
+import type {
+  PlaybackMode,
+  PlaybackProgressSnapshot,
+  PlaybackUiState,
+  Track,
+} from "./types";
 
 type PlayerBindings = {
   onQueueChange?: (queue: Track[]) => void;
@@ -70,6 +75,10 @@ class AzusaScriptingPlayer {
   private loadToken = 0;
   private artworkCache = new Map<string, any | null>();
   private artworkRequests = new Map<string, Promise<any | null>>();
+  private progressListeners = new Set<
+    (snapshot: PlaybackProgressSnapshot) => void
+  >();
+  private lastNowPlayingSecond = -1;
 
   constructor() {
     this.setupMediaCommands();
@@ -93,6 +102,7 @@ class AzusaScriptingPlayer {
         nextIndex >= 0 ? this.queue[nextIndex] : null,
         nextIndex,
       );
+      this.emitProgress(true);
     }
   }
 
@@ -114,6 +124,28 @@ class AzusaScriptingPlayer {
 
   getDuration() {
     return this.player?.duration ?? 0;
+  }
+
+  getProgressSnapshot(): PlaybackProgressSnapshot {
+    const currentTrack = this.getCurrentTrack();
+    const isLoadedCurrentTrack =
+      Boolean(currentTrack?.id) && this.loadedTrackId === currentTrack?.id;
+
+    return {
+      currentTime: isLoadedCurrentTrack ? this.getCurrentTime() : 0,
+      duration: currentTrack?.durationSeconds ?? this.getDuration() ?? 0,
+    };
+  }
+
+  subscribeProgress(
+    listener: (snapshot: PlaybackProgressSnapshot) => void,
+  ) {
+    this.progressListeners.add(listener);
+    listener(this.getProgressSnapshot());
+
+    return () => {
+      this.progressListeners.delete(listener);
+    };
   }
 
   getPlaybackState() {
@@ -143,6 +175,7 @@ class AzusaScriptingPlayer {
     this.currentIndex = index;
     this.bindings.onCurrentTrackChange?.(this.queue[index], this.currentIndex);
     this.emitState("loading", "正在准备播放");
+    this.emitProgress(true);
 
     await SharedAudioSessionApi.setCategory("playback");
     await SharedAudioSessionApi.setActive(true);
@@ -160,8 +193,6 @@ class AzusaScriptingPlayer {
       if (loadToken !== this.loadToken) return;
       this.player!.play();
       this.emitState("playing");
-      this.startTicker();
-      this.updateNowPlaying();
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
     };
   }
@@ -170,7 +201,6 @@ class AzusaScriptingPlayer {
     if (!this.player) return;
     this.player.pause();
     this.emitState("paused");
-    this.updateNowPlaying();
   }
 
   async resume() {
@@ -185,8 +215,6 @@ class AzusaScriptingPlayer {
 
     this.player.play();
     this.emitState("playing");
-    this.startTicker();
-    this.updateNowPlaying();
   }
 
   async toggle() {
@@ -216,6 +244,7 @@ class AzusaScriptingPlayer {
     this.sourceRefreshCount = 0;
     this.stopTicker();
     this.emitState("paused");
+    this.emitProgress(true);
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
@@ -235,12 +264,19 @@ class AzusaScriptingPlayer {
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
+    this.emitProgress(true);
   }
 
   private emitState(state: PlaybackUiState, detail?: string) {
     this.playbackState = state;
     this.playbackDetail = detail ?? "";
+    if (state === "playing") {
+      this.startTicker();
+    } else {
+      this.stopTicker();
+    }
     this.bindings.onStateChange?.(state, detail);
+    this.emitProgress(true);
   }
 
   private setupMediaCommands() {
@@ -273,7 +309,6 @@ class AzusaScriptingPlayer {
     this.player = new AVPlayerCtor();
     this.player.onTimeControlStatusChanged = (status: any) => {
       this.emitState(mapStatus(status));
-      this.updateNowPlaying();
     };
 
     this.player.onEnded = () => {
@@ -473,8 +508,15 @@ class AzusaScriptingPlayer {
       return;
     }
     this.updateTimer = setIntervalApi(() => {
-      this.updateNowPlaying();
-    }, 1000) as unknown as number;
+      const snapshot = this.getProgressSnapshot();
+      this.emitProgress();
+
+      const currentSecond = Math.floor(snapshot.currentTime);
+      if (currentSecond !== this.lastNowPlayingSecond) {
+        this.lastNowPlayingSecond = currentSecond;
+        this.updateNowPlaying();
+      }
+    }, 400) as unknown as number;
   }
 
   private stopTicker() {
@@ -486,10 +528,23 @@ class AzusaScriptingPlayer {
     }
   }
 
+  private emitProgress(forceUpdateNowPlaying = false) {
+    const snapshot = this.getProgressSnapshot();
+    for (const listener of this.progressListeners) {
+      listener(snapshot);
+    }
+
+    if (forceUpdateNowPlaying) {
+      this.lastNowPlayingSecond = Math.floor(snapshot.currentTime);
+      this.updateNowPlaying();
+    }
+  }
+
   private updateNowPlaying() {
     if (!this.player || !MediaPlayerApi) return;
     const currentTrack = this.getCurrentTrack();
     if (!currentTrack) return;
+    const progress = this.getProgressSnapshot();
 
     const artwork = this.artworkCache.get(currentTrack.id) ?? null;
 
@@ -498,9 +553,8 @@ class AzusaScriptingPlayer {
       artist: currentTrack.artist,
       albumTitle: currentTrack.sourceTitle,
       artwork,
-      elapsedPlaybackTime: this.player.currentTime ?? 0,
-      playbackDuration:
-        this.player.duration || currentTrack.durationSeconds || 0,
+      elapsedPlaybackTime: progress.currentTime,
+      playbackDuration: progress.duration,
       playbackRate:
         this.player.timeControlStatus === TimeControlStatusApi?.playing ? 1.0 : 0.0,
     };

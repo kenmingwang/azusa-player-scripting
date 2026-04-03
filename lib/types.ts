@@ -11,6 +11,11 @@ export type PlaybackMode =
   | "repeatOne"
   | "shuffle";
 
+export type PlaybackProgressSnapshot = {
+  currentTime: number;
+  duration: number;
+};
+
 export type SourceKind = "video" | "favorite" | "collection" | "channel";
 export type CollectionKind = "series" | "season";
 
@@ -106,6 +111,20 @@ export type PendingExternalCommand = {
   createdAt: string;
   requestedFrom?: string;
   source?: SourceDescriptor;
+};
+
+export type LyricSearchOption = {
+  key: string;
+  songMid: string;
+  label: string;
+};
+
+export type TrackLyricsEntry = {
+  rawLyric: string;
+  songMid?: string;
+  selectedLabel?: string;
+  searchKey?: string;
+  updatedAt: string;
 };
 
 export type PersistedState = {

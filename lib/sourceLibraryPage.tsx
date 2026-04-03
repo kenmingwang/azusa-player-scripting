@@ -1,4 +1,15 @@
-import { Button, HStack, List, Section, Spacer, Text, VStack } from "scripting";
+import {
+  Button,
+  HStack,
+  List,
+  Section,
+  Spacer,
+  Text,
+  TextField,
+  VStack,
+  useEffect,
+  useState,
+} from "scripting";
 
 import {
   sourceKindLabel,
@@ -11,6 +22,8 @@ type SourceLibraryPageProps = {
   activeSource: SourceDescriptor;
   recentSources: SourceDescriptor[];
   loading: boolean;
+  errorMessage?: string | null;
+  onSearchInput: (input: string) => Promise<void>;
   onPromptSource: (kind: SourceDescriptor["kind"]) => Promise<void>;
   onLoadSource: (source: SourceDescriptor) => Promise<void>;
   onLoadDefault: () => Promise<void>;
@@ -18,6 +31,12 @@ type SourceLibraryPageProps = {
 };
 
 export function SourceLibraryPage(props: SourceLibraryPageProps) {
+  const [query, setQuery] = useState(props.activeSource.input);
+
+  useEffect(() => {
+    setQuery(props.activeSource.input);
+  }, [props.activeSource.input]);
+
   return (
     <List
       navigationTitle={"歌单来源"}
@@ -36,6 +55,30 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
           buttonStyle="bordered"
           action={() => void props.onReload()}
         />
+      </Section>
+
+      <Section header={<Text font={"caption"}>搜索并导入</Text>}>
+        <VStack alignment={"leading"} spacing={10}>
+          <TextField
+            title="来源输入"
+            placeholder="BV / 视频链接 / 收藏夹 / 合集 / 频道"
+            value={query}
+            onChanged={setQuery}
+          />
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            支持 BV、视频链接、favorite:mediaId、收藏夹链接、season / series 链接、channel / UP 主页链接。
+          </Text>
+          <Button
+            title={props.loading ? "导入中..." : "打开这个来源"}
+            buttonStyle="borderedProminent"
+            action={() => void props.onSearchInput(query)}
+          />
+          {props.errorMessage ? (
+            <Text font={"caption"} foregroundColor={"systemRed"}>
+              {props.errorMessage}
+            </Text>
+          ) : null}
+        </VStack>
       </Section>
 
       <Section header={<Text font={"caption"}>导入新歌单</Text>}>

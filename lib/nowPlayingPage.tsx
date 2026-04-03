@@ -1,5 +1,4 @@
 import {
-  Button,
   HStack,
   List,
   NavigationLink,
@@ -16,18 +15,13 @@ import { ArtworkView } from "./artworkView";
 import { activeLyricLine, parseLyrics } from "./lyrics";
 import { LyricsPage } from "./lyricsPage";
 import { getSharedPlayer } from "./player";
+import {
+  PlaybackModeControl,
+  TransportControls,
+  playbackModeLabel,
+} from "./playbackControls";
 import { loadTrackLyrics } from "./storage";
 import type { PlaybackMode, PlaybackUiState, Track } from "./types";
-
-const globalRuntime = globalThis as any;
-const setIntervalApi =
-  typeof globalRuntime.setInterval === "function"
-    ? globalRuntime.setInterval.bind(globalRuntime)
-    : null;
-const clearIntervalApi =
-  typeof globalRuntime.clearInterval === "function"
-    ? globalRuntime.clearInterval.bind(globalRuntime)
-    : null;
 
 type NowPlayingPageProps = {
   currentTrack: Track | null;
@@ -54,20 +48,6 @@ function formatDuration(seconds?: number) {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-function modeLabel(mode: PlaybackMode) {
-  switch (mode) {
-    case "repeatAll":
-      return "列表循环";
-    case "repeatOne":
-      return "单曲循环";
-    case "shuffle":
-      return "随机播放";
-    case "normal":
-    default:
-      return "顺序播放";
-  }
-}
-
 function displayTrackTitle(track: Track | null, sourceTitle: string) {
   if (!track) {
     return sourceTitle;
@@ -80,43 +60,28 @@ function displayTrackTitle(track: Track | null, sourceTitle: string) {
 
 export function NowPlayingPage(props: NowPlayingPageProps) {
   const player = getSharedPlayer();
-  const [currentTime, setCurrentTime] = useState(player.getCurrentTime());
+  const [progress, setProgress] = useState(player.getProgressSnapshot());
 
   useEffect(() => {
-    if (!setIntervalApi) {
-      return;
-    }
-
-    const timer = setIntervalApi(() => {
-      setCurrentTime(player.getCurrentTime());
-    }, 450) as unknown as number;
-
-    return () => {
-      if (clearIntervalApi) {
-        clearIntervalApi(timer);
-      }
-    };
+    return player.subscribeProgress((snapshot) => {
+      setProgress(snapshot);
+    });
   }, []);
 
-  const duration = props.currentTrack?.durationSeconds ?? player.getDuration();
-  const progressText = `${formatDuration(currentTime)} / ${formatDuration(duration)}`;
-  const primaryTitle = props.playbackState === "playing" ? "暂停" : "继续播放";
+  const duration = progress.duration || props.currentTrack?.durationSeconds || 0;
+  const progressText = `${formatDuration(progress.currentTime)} / ${formatDuration(duration)}`;
   const displayTitle = displayTrackTitle(props.currentTrack, props.sourceTitle);
-  const rawLyrics = useMemo(
-    () =>
-      props.currentTrack
-        ? loadTrackLyrics({
-            id: props.currentTrack.id,
-            title: props.currentTrack.title,
-            artist: props.currentTrack.artist,
-          })
-        : "",
-    [props.currentTrack?.id],
-  );
+  const rawLyrics = props.currentTrack
+    ? loadTrackLyrics({
+        id: props.currentTrack.id,
+        title: props.currentTrack.title,
+        artist: props.currentTrack.artist,
+      })
+    : "";
   const parsedLyrics = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
   const currentLyric = useMemo(
-    () => activeLyricLine(parsedLyrics, currentTime),
-    [parsedLyrics, currentTime],
+    () => activeLyricLine(parsedLyrics, progress.currentTime),
+    [parsedLyrics, progress.currentTime],
   );
   const lyricStatus = parsedLyrics.lines.length
     ? parsedLyrics.timed
@@ -125,7 +90,7 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
     : "还没有歌词";
   const progressValue =
     duration > 0
-      ? Math.max(0, Math.min(currentTime, duration))
+      ? Math.max(0, Math.min(progress.currentTime, duration))
       : undefined;
 
   return (
@@ -170,7 +135,7 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
               />
             ) : null}
             <Text font={"caption"} foregroundColor={"secondary"}>
-              {modeLabel(props.playbackMode)} · {props.currentIndex >= 0
+              {playbackModeLabel(props.playbackMode)} · {props.currentIndex >= 0
                 ? `${props.currentIndex + 1}/${props.queueLength}`
                 : `共 ${props.queueLength} 首`}
             </Text>
@@ -197,30 +162,18 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
               type: "rect",
               cornerRadius: 24,
               style: "continuous",
-            },
-          }}
+              },
+            }}
           listRowSeparator="hidden">
-          <HStack spacing={10}>
-            <Button
-              title="上一首"
-              buttonStyle="bordered"
-              action={() => void props.onPrevious()}
-            />
-            <Button
-              title={primaryTitle}
-              buttonStyle="borderedProminent"
-              action={() => void props.onPrimaryAction()}
-            />
-            <Button
-              title="下一首"
-              buttonStyle="bordered"
-              action={() => void props.onNext()}
-            />
-          </HStack>
-          <Button
-            title={modeLabel(props.playbackMode)}
-            buttonStyle="bordered"
-            action={() => props.onCyclePlaybackMode()}
+          <TransportControls
+            playbackState={props.playbackState}
+            onPrevious={() => void props.onPrevious()}
+            onPrimaryAction={() => void props.onPrimaryAction()}
+            onNext={() => void props.onNext()}
+          />
+          <PlaybackModeControl
+            playbackMode={props.playbackMode}
+            onCyclePlaybackMode={props.onCyclePlaybackMode}
           />
         </VStack>
       </Section>
@@ -235,14 +188,14 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
           </Text>
           <Text font={currentLyric ? "headline" : "body"}>
             {currentLyric?.text ||
-              "进入歌词页后可以导入 `.lrc` / `.txt`，并跟随播放时间高亮。"}
+              "进入歌词页后会自动搜索 QQ 歌词，也支持导入 `.lrc` / `.txt`。"}
           </Text>
           <NavigationLink destination={<LyricsPage track={props.currentTrack} />}>
             <HStack spacing={12}>
               <VStack alignment={"leading"} spacing={3}>
                 <Text font={"body"}>打开歌词页</Text>
                 <Text font={"caption"} foregroundColor={"secondary"}>
-                  导入歌词、查看同步高亮
+                  搜索歌词候选、导入本地歌词、查看同步高亮
                 </Text>
               </VStack>
               <Text font={"caption"} foregroundColor={"systemBlue"}>

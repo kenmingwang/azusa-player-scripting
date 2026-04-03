@@ -28,6 +28,11 @@ import {
 } from "./externalBridge";
 import { NowPlayingPage } from "./nowPlayingPage";
 import {
+  PlaybackModeControl,
+  TransportControls,
+  playbackModeLabel,
+} from "./playbackControls";
+import {
   getNativePlayerCompatibilityMessage,
   getSharedPlayer,
 } from "./player";
@@ -44,7 +49,6 @@ import {
   parseSourceInput,
   sourceKindLabel,
   sourceSecondaryLabel,
-  sourceShortLabel,
 } from "./sources";
 import type {
   PendingExternalCommand,
@@ -185,20 +189,6 @@ const PLAYBACK_MODE_ORDER: PlaybackMode[] = [
   "shuffle",
 ];
 
-function playbackModeLabel(mode: PlaybackMode) {
-  switch (mode) {
-    case "repeatAll":
-      return "列表循环";
-    case "repeatOne":
-      return "单曲循环";
-    case "shuffle":
-      return "随机播放";
-    case "normal":
-    default:
-      return "顺序播放";
-  }
-}
-
 function playbackModeHint(mode: PlaybackMode) {
   switch (mode) {
     case "repeatAll":
@@ -327,7 +317,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     ScriptApi?.env === "index" ? "idle" : "unsupported",
   );
   const [queueQuery, setQueueQuery] = useState("");
-  const [currentTime, setCurrentTime] = useState(player.getCurrentTime());
+  const [progress, setProgress] = useState(player.getProgressSnapshot());
 
   async function loadSource(nextSource?: SourceDescriptor) {
     const source = nextSource || activeSource || DEFAULT_SOURCE;
@@ -397,30 +387,17 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     await loadSource(source);
   }
 
-  async function openSourceActions() {
-    const selection = await Dialog.actionSheet({
-      title: "切换来源",
-      message: "现在可以直接导入视频、收藏夹、合集和频道。",
-      actions: [
-        { label: "导入视频 / BV" },
-        { label: "导入收藏夹" },
-        { label: "导入合集" },
-        { label: "导入频道" },
-        { label: "切回默认歌单" },
-      ],
-    });
-
-    if (selection === 0) {
-      await promptForSource("video");
-    } else if (selection === 1) {
-      await promptForSource("favorite");
-    } else if (selection === 2) {
-      await promptForSource("collection");
-    } else if (selection === 3) {
-      await promptForSource("channel");
-    } else if (selection === 4) {
-      await loadSource(DEFAULT_SOURCE);
+  async function loadSourceFromInput(input: string) {
+    const trimmed = input.trim();
+    const source = parseSourceInput(trimmed);
+    if (!source) {
+      setError(
+        "请输入 BV / 视频链接，或 favorite:mediaId、season:mid:id、series:mid:id、channel:mid 这类来源格式",
+      );
+      return;
     }
+
+    await loadSource(source);
   }
 
   async function playTrackAt(index: number) {
@@ -452,18 +429,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     } finally {
       setPlayLoading(false);
     }
-  }
-
-  async function playRandomTrack() {
-    if (!tracks.length) {
-      return;
-    }
-
-    const randomIndex =
-      tracks.length === 1
-        ? 0
-        : Math.floor(Math.random() * tracks.length);
-    await playTrackAt(randomIndex);
   }
 
   async function handlePrimaryAction() {
@@ -638,20 +603,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   }, [activeSource.input, tracks.length, currentTrack?.id, loading, playLoading]);
 
   useEffect(() => {
-    if (!setIntervalApi) {
-      return;
-    }
-
-    const timer = setIntervalApi(() => {
-      setCurrentTime(player.getCurrentTime());
-    }, 450) as unknown as number;
-
-    return () => {
-      if (clearIntervalApi) {
-        clearIntervalApi(timer);
-      }
-    };
-  }, [currentTrack?.id]);
+    return player.subscribeProgress((snapshot) => {
+      setProgress(snapshot);
+    });
+  }, []);
 
   useEffect(() => {
     void syncBackgroundKeepAlive();
@@ -783,13 +738,15 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const modeLabel = playbackModeLabel(playbackMode);
   const modeHint = playbackModeHint(playbackMode);
   const cachedTrackCount = tracks.filter((track) => Boolean(track.localFilePath)).length;
-  const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
+  const currentTrackDuration = formatDuration(
+    progress.duration || currentTrack?.durationSeconds,
+  );
   const currentTrackLabel = displayTrackTitle(currentTrack, sourceTitle);
   const currentDurationSeconds =
-    currentTrack?.durationSeconds ?? player.getDuration();
+    progress.duration || currentTrack?.durationSeconds || 0;
   const currentProgressValue =
     currentDurationSeconds > 0
-      ? Math.max(0, Math.min(currentTime, currentDurationSeconds))
+      ? Math.max(0, Math.min(progress.currentTime, currentDurationSeconds))
       : undefined;
   const normalizedQueueQuery = queueQuery.trim().toLowerCase();
   const filteredTracks = tracks
@@ -869,6 +826,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                     activeSource={activeSource}
                     recentSources={visibleRecentSources.slice(0, 8)}
                     loading={loading}
+                    errorMessage={error}
+                    onSearchInput={loadSourceFromInput}
                     onPromptSource={promptForSource}
                     onLoadSource={loadSource}
                     onLoadDefault={() => loadSource(DEFAULT_SOURCE)}
@@ -883,11 +842,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 title={loading ? "同步中..." : "重新拉取"}
                 buttonStyle="bordered"
                 action={() => void loadSource()}
-              />
-              <Button
-                title={modeLabel}
-                buttonStyle="bordered"
-                action={() => cyclePlaybackMode()}
               />
             </HStack>
 
@@ -989,27 +943,21 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             ) : null}
             {currentDurationSeconds > 0 ? (
               <Text font={"caption2"} foregroundColor={"secondary"}>
-                {formatDuration(currentTime)} / {formatDuration(currentDurationSeconds)}
+                {formatDuration(progress.currentTime)} / {formatDuration(currentDurationSeconds)}
               </Text>
             ) : null}
 
-            <HStack spacing={10}>
-              <Button
-                title="上一首"
-                buttonStyle="bordered"
-                action={() => void skipBy(-1)}
-              />
-              <Button
-                title={playbackState === "playing" ? "暂停" : "继续"}
-                buttonStyle="borderedProminent"
-                action={() => void handlePrimaryAction()}
-              />
-              <Button
-                title="下一首"
-                buttonStyle="bordered"
-                action={() => void skipBy(1)}
-              />
-            </HStack>
+            <TransportControls
+              compact
+              playbackState={playbackState}
+              onPrevious={() => void skipBy(-1)}
+              onPrimaryAction={() => void handlePrimaryAction()}
+              onNext={() => void skipBy(1)}
+            />
+            <PlaybackModeControl
+              playbackMode={playbackMode}
+              onCyclePlaybackMode={cyclePlaybackMode}
+            />
           </VStack>
         </Section>
 

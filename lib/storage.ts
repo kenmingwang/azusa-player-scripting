@@ -7,6 +7,7 @@ import type {
   PersistedState,
   PlaybackSnapshot,
   SourceDescriptor,
+  TrackLyricsEntry,
   Track,
 } from "./types";
 
@@ -18,7 +19,7 @@ const RECENT_SOURCE_LIMIT = 8;
 const SHARED_OPTIONS = { shared: true } as const;
 
 type DownloadIndex = Record<string, string>;
-type LyricsIndex = Record<string, string>;
+type LyricsIndex = Record<string, string | TrackLyricsEntry>;
 
 const defaultState: PersistedState = {
   lastInput: "",
@@ -433,18 +434,118 @@ export function loadLyricsIndex(): LyricsIndex {
   return nextLyrics;
 }
 
-export function loadTrackLyrics(input: {
+function normalizeLyricsEntry(
+  value: string | TrackLyricsEntry | null | undefined,
+): TrackLyricsEntry | null {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return {
+      rawLyric: value,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (typeof value !== "object") {
+    return null;
+  }
+
+  return {
+    rawLyric: typeof value.rawLyric === "string" ? value.rawLyric : "",
+    songMid: typeof value.songMid === "string" ? value.songMid : undefined,
+    selectedLabel:
+      typeof value.selectedLabel === "string" ? value.selectedLabel : undefined,
+    searchKey: typeof value.searchKey === "string" ? value.searchKey : undefined,
+    updatedAt:
+      typeof value.updatedAt === "string"
+        ? value.updatedAt
+        : new Date().toISOString(),
+  };
+}
+
+function normalizeLyricsIndex(index: LyricsIndex) {
+  const nextIndex: Record<string, TrackLyricsEntry> = {};
+  let changed = false;
+
+  for (const [key, value] of Object.entries(index)) {
+    const entry = normalizeLyricsEntry(value);
+    if (!entry) {
+      changed = true;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      changed = true;
+    }
+
+    nextIndex[key] = entry;
+  }
+
+  return {
+    nextIndex,
+    changed,
+  };
+}
+
+function saveLyricsIndex(index: Record<string, TrackLyricsEntry>) {
+  safeSet(LYRICS_KEY, index, true);
+  safeSet(LYRICS_KEY, index, false);
+}
+
+export function loadTrackLyricsEntry(input: {
   id?: string;
   title?: string;
   artist?: string;
 }) {
   const lyricsIndex = loadLyricsIndex();
+  const { nextIndex, changed } = normalizeLyricsIndex(lyricsIndex);
+
+  if (changed) {
+    saveLyricsIndex(nextIndex);
+  }
+
   for (const key of lyricLookupKeys(input)) {
-    if (lyricsIndex[key]) {
-      return lyricsIndex[key];
+    const entry = nextIndex[key];
+    if (entry) {
+      return entry;
     }
   }
-  return "";
+
+  return null;
+}
+
+export function loadTrackLyrics(input: {
+  id?: string;
+  title?: string;
+  artist?: string;
+}) {
+  return loadTrackLyricsEntry(input)?.rawLyric ?? "";
+}
+
+export function saveTrackLyricsEntry(
+  input: {
+    id?: string;
+    title?: string;
+    artist?: string;
+  },
+  entry: Omit<TrackLyricsEntry, "updatedAt"> & { updatedAt?: string },
+) {
+  const { nextIndex } = normalizeLyricsIndex(loadLyricsIndex());
+  const normalizedEntry: TrackLyricsEntry = {
+    rawLyric: entry.rawLyric,
+    songMid: entry.songMid,
+    selectedLabel: entry.selectedLabel,
+    searchKey: entry.searchKey,
+    updatedAt: entry.updatedAt ?? new Date().toISOString(),
+  };
+
+  for (const key of lyricLookupKeys(input)) {
+    nextIndex[key] = normalizedEntry;
+  }
+
+  saveLyricsIndex(nextIndex);
 }
 
 export function saveTrackLyrics(
@@ -455,13 +556,7 @@ export function saveTrackLyrics(
   },
   rawLyrics: string,
 ) {
-  const nextLyrics = loadLyricsIndex();
-  for (const key of lyricLookupKeys(input)) {
-    nextLyrics[key] = rawLyrics;
-  }
-
-  safeSet(LYRICS_KEY, nextLyrics, true);
-  safeSet(LYRICS_KEY, nextLyrics, false);
+  saveTrackLyricsEntry(input, { rawLyric: rawLyrics });
 }
 
 export function clearTrackLyrics(input: {
@@ -469,11 +564,10 @@ export function clearTrackLyrics(input: {
   title?: string;
   artist?: string;
 }) {
-  const nextLyrics = loadLyricsIndex();
+  const { nextIndex } = normalizeLyricsIndex(loadLyricsIndex());
   for (const key of lyricLookupKeys(input)) {
-    delete nextLyrics[key];
+    delete nextIndex[key];
   }
 
-  safeSet(LYRICS_KEY, nextLyrics, true);
-  safeSet(LYRICS_KEY, nextLyrics, false);
+  saveLyricsIndex(nextIndex);
 }

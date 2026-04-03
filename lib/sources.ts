@@ -129,6 +129,7 @@ function parseFavoriteInput(input: string): FavoriteSourceDescriptor | null {
   const trimmed = cleanInput(input);
   const mediaId = matchFirst(trimmed, [
     /^(?:favorite|fav)\s*:\s*(\d+)$/i,
+    /^(\d+)$/i,
     /^ml(\d+)$/i,
     /\/(?:medialist\/play\/)?ml(\d+)/i,
     /[?&]media_id=(\d+)/i,
