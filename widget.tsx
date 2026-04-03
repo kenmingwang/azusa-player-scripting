@@ -1,4 +1,4 @@
-import { Button, HStack, Text, VStack, Widget } from "scripting";
+import { Button, HStack, Image, Text, VStack, Widget, ZStack } from "scripting";
 
 import {
   NextTrackIntent,
@@ -8,6 +8,17 @@ import {
 } from "./app_intents";
 import { loadState } from "./lib/storage";
 import type { PlaybackSnapshot } from "./lib/types";
+
+function displayTrackTitle(snapshot: PlaybackSnapshot) {
+  const currentTitle = snapshot.currentTrack?.title;
+  if (!currentTitle) {
+    return snapshot.sourceTitle;
+  }
+
+  return currentTitle.startsWith(`${snapshot.sourceTitle} · `)
+    ? currentTitle.slice(snapshot.sourceTitle.length + 3)
+    : currentTitle;
+}
 
 function formatUpdatedAt(isoString?: string) {
   if (!isoString) {
@@ -49,9 +60,52 @@ function ActionRow(props: PlaybackSnapshot) {
   );
 }
 
+function WidgetCard(props: any) {
+  const displaySize = (Widget as any)?.displaySize ?? {
+    width: 170,
+    height: 170,
+  };
+
+  return (
+    <ZStack
+      alignment="topLeading"
+      frame={{ width: displaySize.width, height: displaySize.height }}
+      clipShape={{
+        type: "rect",
+        cornerRadius: 28,
+        style: "continuous",
+      }}
+      widgetBackground={{
+        style: {
+          light: "rgba(248, 250, 252, 0.90)",
+          dark: "rgba(15, 23, 42, 0.92)",
+        },
+        shape: {
+          type: "rect",
+          cornerRadius: 28,
+          style: "continuous",
+        },
+      }}>
+      {props.cover ? (
+        <Image
+          imageUrl={props.cover}
+          frame={{ width: displaySize.width, height: displaySize.height }}
+          resizable
+          scaleToFill
+          opacity={0.22}
+          widgetAccentedRenderingMode="fullColor"
+        />
+      ) : null}
+      <VStack alignment={"leading"} spacing={12} padding={18}>
+        {props.children}
+      </VStack>
+    </ZStack>
+  );
+}
+
 function EmptyWidget() {
   return (
-    <VStack alignment={"leading"} spacing={8}>
+    <WidgetCard>
       <Text font={"headline"}>Azusa</Text>
       <Text font={"subheadline"} foregroundColor={"secondary"}>
         还没有播放快照，先打开一次完整播放器。
@@ -61,7 +115,7 @@ function EmptyWidget() {
         systemImage="music.note.list"
         intent={OpenAzusaIntent(undefined)}
       />
-    </VStack>
+    </WidgetCard>
   );
 }
 
@@ -72,28 +126,64 @@ function WidgetView() {
   }
 
   const updatedAt = formatUpdatedAt(snapshot.updatedAt);
+  const isSmall = (Widget as any)?.family === "systemSmall";
+  const cover = snapshot.currentTrack?.cover || snapshot.cover;
+  const title = displayTrackTitle(snapshot);
 
   return (
-    <VStack alignment={"leading"} spacing={8}>
-      <Text font={"headline"}>
-        {snapshot.currentTrack?.title || snapshot.sourceTitle}
-      </Text>
-      <Text font={"subheadline"} foregroundColor={"secondary"}>
-        {snapshot.currentTrack?.artist || snapshot.ownerName || "Azusa"}
-      </Text>
+    <WidgetCard cover={cover}>
+      <HStack spacing={12}>
+        {cover ? (
+          <Image
+            imageUrl={cover}
+            frame={{ width: isSmall ? 54 : 62, height: isSmall ? 54 : 62 }}
+            resizable
+            aspectRatio={{ contentMode: "fit" }}
+            interpolation="high"
+            antialiased
+            padding={6}
+            widgetAccentedRenderingMode="fullColor"
+            background={{
+              style: "rgba(255, 255, 255, 0.08)",
+              shape: {
+                type: "rect",
+                cornerRadius: 18,
+                style: "continuous",
+              },
+            }}
+            clipShape={{
+              type: "rect",
+              cornerRadius: 18,
+              style: "continuous",
+            }}
+          />
+        ) : null}
+        <VStack alignment={"leading"} spacing={4}>
+          <Text font={"caption2"} foregroundColor={"secondary"}>
+            Azusa
+          </Text>
+          <Text font={"headline"}>
+            {title}
+          </Text>
+          <Text font={"subheadline"} foregroundColor={"secondary"}>
+            {snapshot.currentTrack?.artist || snapshot.ownerName || "Azusa"}
+          </Text>
+        </VStack>
+      </HStack>
+
       <Text font={"caption"} foregroundColor={"secondary"}>
         {snapshot.currentIndex >= 0
           ? `${snapshot.currentIndex + 1}/${snapshot.queueLength}`
           : `共 ${snapshot.queueLength} 首`}
+        {!isSmall ? ` · ${snapshot.sourceTitle}` : ""}
       </Text>
-      <Text font={"caption"} foregroundColor={"secondary"}>
-        {snapshot.sourceTitle}
-      </Text>
+
+      <ActionRow {...snapshot} />
+
       <Text font={"caption2"} foregroundColor={"tertiary"}>
         {updatedAt ? `最近同步 ${updatedAt}` : "桌面卡片刷新会慢几秒"}
       </Text>
-      <ActionRow {...snapshot} />
-    </VStack>
+    </WidgetCard>
   );
 }
 

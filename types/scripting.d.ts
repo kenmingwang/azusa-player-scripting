@@ -19,6 +19,7 @@ declare module "scripting" {
   export const Dialog: any;
   export const Image: any;
   export const List: any;
+  export const ProgressView: any;
   export const Text: any;
   export const TextField: any;
   export const Form: any;
@@ -29,6 +30,7 @@ declare module "scripting" {
   export const LiveActivityUIExpandedBottom: any;
   export const LiveActivityUIExpandedCenter: any;
   export const VStack: any;
+  export const ZStack: any;
   export const Spacer: any;
   export const Path: any;
   export const FileManager: any;

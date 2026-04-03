@@ -113,3 +113,11 @@ export function activeLyricLineIndex(
 
   return activeIndex;
 }
+
+export function activeLyricLine(
+  lyrics: ParsedLyrics,
+  currentTimeSeconds: number,
+) {
+  const index = activeLyricLineIndex(lyrics, currentTimeSeconds);
+  return index >= 0 ? lyrics.lines[index] ?? null : null;
+}
