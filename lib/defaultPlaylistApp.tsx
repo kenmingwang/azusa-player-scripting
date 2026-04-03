@@ -36,6 +36,7 @@ import {
   getNativePlayerCompatibilityMessage,
   getSharedPlayer,
 } from "./player";
+import { PlaybackProgressView } from "./playbackProgressView";
 import { usePlayerProgress } from "./usePlayerProgress";
 import { SourceLibraryPage } from "./sourceLibraryPage";
 import {
@@ -949,13 +950,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               </HStack>
             </NavigationLink>
 
-            {typeof currentProgressValue === "number" && currentDurationSeconds > 0 ? (
-              <ProgressView
-                value={currentProgressValue}
-                total={currentDurationSeconds}
-                progressViewStyle="linear"
-              />
-            ) : null}
+            <PlaybackProgressView progress={progress} />
             {currentDurationSeconds > 0 ? (
               <Text font={"caption2"} foregroundColor={"secondary"}>
                 {formatDuration(progress.currentTime)} / {formatDuration(currentDurationSeconds)}

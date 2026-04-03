@@ -14,6 +14,9 @@ export type PlaybackMode =
 export type PlaybackProgressSnapshot = {
   currentTime: number;
   duration: number;
+  timerFrom?: number;
+  timerTo?: number;
+  isRunning?: boolean;
 };
 
 export type SourceKind = "video" | "favorite" | "collection" | "channel";

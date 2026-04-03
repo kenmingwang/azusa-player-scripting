@@ -16,6 +16,7 @@ import { ArtworkView } from "./artworkView";
 import { activeLyricLine, parseLyrics } from "./lyrics";
 import { LyricsPage } from "./lyricsPage";
 import { getSharedPlayer } from "./player";
+import { PlaybackProgressView } from "./playbackProgressView";
 import {
   PlaybackModeControl,
   TransportControls,
@@ -123,13 +124,7 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
             <Text font={"caption"} foregroundColor={"secondary"}>
               {progressText}
             </Text>
-            {typeof progressValue === "number" && duration > 0 ? (
-              <ProgressView
-                value={progressValue}
-                total={duration}
-                progressViewStyle="linear"
-              />
-            ) : null}
+            <PlaybackProgressView progress={progress} />
             <Text font={"caption"} foregroundColor={"secondary"}>
               {playbackModeLabel(props.playbackMode)} · {props.currentIndex >= 0
                 ? `${props.currentIndex + 1}/${props.queueLength}`

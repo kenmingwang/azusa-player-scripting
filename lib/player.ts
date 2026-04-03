@@ -153,12 +153,29 @@ class AzusaScriptingPlayer {
       currentTime = this.readNativeCurrentTime();
     }
 
+    const boundedCurrentTime =
+      duration > 0
+        ? Math.max(0, Math.min(currentTime, duration))
+        : Math.max(0, currentTime);
+    const shouldRunTimer =
+      this.playbackState === "playing" &&
+      duration > 0 &&
+      Boolean(currentTrack?.id) &&
+      this.progressTrackId === currentTrack?.id;
+    const timerFrom = shouldRunTimer
+      ? Date.now() - boundedCurrentTime * 1000
+      : undefined;
+    const timerTo =
+      shouldRunTimer && typeof timerFrom === "number"
+        ? timerFrom + duration * 1000
+        : undefined;
+
     return {
-      currentTime:
-        duration > 0
-          ? Math.max(0, Math.min(currentTime, duration))
-          : Math.max(0, currentTime),
+      currentTime: boundedCurrentTime,
       duration,
+      timerFrom,
+      timerTo,
+      isRunning: shouldRunTimer,
     };
   }
 
