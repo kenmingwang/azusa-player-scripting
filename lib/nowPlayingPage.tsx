@@ -132,7 +132,7 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
     <List
       navigationTitle={"正在播放"}
       navigationBarTitleDisplayMode={"inline"}
-      listStyle={"insetGrouped"}
+      listStyle={"plain"}
     >
       <Section>
         <VStack

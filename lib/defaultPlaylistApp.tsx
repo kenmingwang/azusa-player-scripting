@@ -812,7 +812,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       <List
         navigationTitle={"Azusa"}
         navigationBarTitleDisplayMode={"large"}
-        listStyle={"insetGrouped"}
+        listStyle={"plain"}
       >
         <Section header={<Text font={"caption"}>当前歌单</Text>}>
           <VStack
