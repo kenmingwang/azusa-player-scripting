@@ -40,20 +40,29 @@ function ActionRow(props: PlaybackSnapshot) {
     props.playbackState === "playing" ? "停" : "播";
 
   return (
-    <HStack spacing={8}>
+    <HStack
+      spacing={10}
+      padding={6}
+      glassEffect={true}
+      clipShape={{
+        type: "capsule",
+      }}>
       <Button
         title="上"
         systemImage="backward.fill"
+        buttonStyle="glass"
         intent={PreviousTrackIntent(undefined)}
       />
       <Button
         title={playPauseTitle}
         systemImage="playpause.fill"
+        buttonStyle="glassProminent"
         intent={TogglePlaybackIntent(undefined)}
       />
       <Button
         title="下"
         systemImage="forward.fill"
+        buttonStyle="glass"
         intent={NextTrackIntent(undefined)}
       />
     </HStack>
@@ -77,8 +86,8 @@ function WidgetCard(props: any) {
       }}
       widgetBackground={{
         style: {
-          light: "rgba(248, 250, 252, 0.90)",
-          dark: "rgba(15, 23, 42, 0.92)",
+          light: "rgba(241, 245, 249, 0.88)",
+          dark: "rgba(15, 23, 42, 0.84)",
         },
         shape: {
           type: "rect",
@@ -91,12 +100,14 @@ function WidgetCard(props: any) {
           imageUrl={props.cover}
           frame={{ width: displaySize.width, height: displaySize.height }}
           resizable
-          scaleToFill
-          opacity={0.22}
+          aspectRatio={{ contentMode: "fit" }}
+          scaleEffect={1.18}
+          blur={18}
+          opacity={0.12}
           widgetAccentedRenderingMode="fullColor"
         />
       ) : null}
-      <VStack alignment={"leading"} spacing={12} padding={18}>
+      <VStack alignment={"leading"} spacing={14} padding={18}>
         {props.children}
       </VStack>
     </ZStack>
@@ -134,29 +145,25 @@ function WidgetView() {
     <WidgetCard cover={cover}>
       <HStack spacing={12}>
         {cover ? (
-          <Image
-            imageUrl={cover}
-            frame={{ width: isSmall ? 54 : 62, height: isSmall ? 54 : 62 }}
-            resizable
-            aspectRatio={{ contentMode: "fit" }}
-            interpolation="high"
-            antialiased
-            padding={6}
-            widgetAccentedRenderingMode="fullColor"
-            background={{
-              style: "rgba(255, 255, 255, 0.08)",
-              shape: {
-                type: "rect",
-                cornerRadius: 18,
-                style: "continuous",
-              },
-            }}
+          <ZStack
+            frame={{ width: isSmall ? 60 : 68, height: isSmall ? 60 : 68 }}
+            glassEffect={true}
             clipShape={{
               type: "rect",
               cornerRadius: 18,
               style: "continuous",
-            }}
-          />
+            }}>
+            <Image
+              imageUrl={cover}
+              frame={{ width: isSmall ? 60 : 68, height: isSmall ? 60 : 68 }}
+              resizable
+              aspectRatio={{ contentMode: "fit" }}
+              interpolation="high"
+              antialiased
+              padding={6}
+              widgetAccentedRenderingMode="fullColor"
+            />
+          </ZStack>
         ) : null}
         <VStack alignment={"leading"} spacing={4}>
           <Text font={"caption2"} foregroundColor={"secondary"}>
