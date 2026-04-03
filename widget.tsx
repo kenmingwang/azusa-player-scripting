@@ -105,9 +105,9 @@ function WidgetCard(props: any) {
           imageUrl={props.cover}
           frame={{ width: displaySize.width, height: displaySize.height }}
           resizable
-          aspectRatio={{ contentMode: "fit" }}
-          scaleEffect={1.18}
-          blur={18}
+          aspectRatio={{ contentMode: "fill" }}
+          scaleEffect={1.28}
+          blur={20}
           opacity={0.12}
           widgetAccentedRenderingMode="fullColor"
         />
