@@ -190,6 +190,32 @@ function scoreAudio(
   return score;
 }
 
+function scoreStreamHost(url?: string) {
+  if (!url) {
+    return -999;
+  }
+
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+
+    if (
+      host.endsWith("bilivideo.com") ||
+      host.endsWith("bilivideo.cn") ||
+      host.endsWith("hdslb.com")
+    ) {
+      return 120;
+    }
+
+    if (host.endsWith("akamaized.net")) {
+      return -120;
+    }
+
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
 function buildAudioCandidateUrls(
   audios: NonNullable<PlayUrlResponse["data"]>["dash"]["audio"] = [],
 ) {
@@ -197,19 +223,39 @@ function buildAudioCandidateUrls(
     return [] as string[];
   }
 
-  const orderedAudios = [...audios].sort(
-    (left, right) => scoreAudio(right) - scoreAudio(left),
-  );
-  const preferredAudio = orderedAudios[0];
+  const entries = audios.flatMap((audio, audioIndex) => {
+    const audioQualityScore = scoreAudio(audio);
+    const urls = [audio.baseUrl, ...(audio.backupUrl ?? [])]
+      .map(normalizeHttps)
+      .filter(Boolean);
 
-  return uniq([
-    preferredAudio?.baseUrl,
-    ...(preferredAudio?.backupUrl ?? []),
-    ...orderedAudios.slice(1).flatMap((audio) => [
-      audio.baseUrl,
-      ...(audio.backupUrl ?? []),
-    ]),
-  ].map(normalizeHttps));
+    return urls.map((url, urlIndex) => ({
+      url,
+      audioQualityScore,
+      hostScore: scoreStreamHost(url),
+      audioIndex,
+      urlIndex,
+    }));
+  });
+
+  return uniq(
+    entries
+      .sort((left, right) => {
+        const scoreDelta =
+          right.audioQualityScore + right.hostScore -
+          (left.audioQualityScore + left.hostScore);
+        if (scoreDelta !== 0) {
+          return scoreDelta;
+        }
+
+        if (left.audioIndex !== right.audioIndex) {
+          return left.audioIndex - right.audioIndex;
+        }
+
+        return left.urlIndex - right.urlIndex;
+      })
+      .map((entry) => entry.url),
+  );
 }
 
 function uniq(items: Array<string | null | undefined>) {
