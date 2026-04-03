@@ -355,7 +355,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       rememberRecentSource(result.source);
       player.setQueue(result.tracks, matchedTrackId ?? null);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : String(fetchError));
+      setError(
+        `来源导入失败: ${
+          fetchError instanceof Error ? fetchError.message : String(fetchError)
+        }`,
+      );
     } finally {
       setLoading(false);
     }
@@ -392,7 +396,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     const source = parseSourceInput(trimmed);
     if (!source) {
       setError(
-        "请输入 BV / 视频链接，或 favorite:mediaId、season:mid:id、series:mid:id、channel:mid 这类来源格式",
+        "来源格式无效: 请输入 BV / 视频链接，或 favorite:mediaId、season:mid:id、series:mid:id、channel:mid 这类来源格式",
       );
       return;
     }
@@ -412,7 +416,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       player.setQueue(tracks);
       await player.playIndex(index);
     } catch (playError) {
-      setError(playError instanceof Error ? playError.message : String(playError));
+      setError(
+        `开始播放失败: ${
+          playError instanceof Error ? playError.message : String(playError)
+        }`,
+      );
     } finally {
       setPlayLoading(false);
     }
@@ -425,7 +433,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     try {
       await player.skip(delta);
     } catch (skipError) {
-      setError(skipError instanceof Error ? skipError.message : String(skipError));
+      setError(
+        `切歌失败: ${
+          skipError instanceof Error ? skipError.message : String(skipError)
+        }`,
+      );
     } finally {
       setPlayLoading(false);
     }
@@ -438,9 +450,14 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
 
     try {
+      setError(null);
       await player.toggle();
     } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : String(toggleError));
+      setError(
+        `播放控制失败: ${
+          toggleError instanceof Error ? toggleError.message : String(toggleError)
+        }`,
+      );
     }
   }
 
@@ -545,9 +562,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       onStateChange: (state, detail) => {
         setPlaybackState(state);
         setPlaybackDetail(detail ?? "");
+        if (state === "playing") {
+          setError(null);
+        }
       },
       onError: (message) => {
-        setError(message);
+        setError(`音频流错误: ${message}`);
       },
     });
 
