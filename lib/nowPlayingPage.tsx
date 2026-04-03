@@ -98,9 +98,9 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
     >
       <Section>
         <VStack
-          alignment={"leading"}
-          spacing={16}
-          padding={{ top: 12, bottom: 8 }}
+          alignment={"center"}
+          spacing={18}
+          padding={{ top: 18, bottom: 10 }}
           listRowSeparator="hidden">
           <ArtworkView
             cover={props.artworkUrl}
@@ -111,7 +111,7 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
             cornerRadius={28}
             fallbackColor={props.playbackState === "playing" ? "systemBlue" : "systemGray3"}
           />
-          <VStack alignment={"leading"} spacing={5}>
+          <VStack alignment={"center"} spacing={5}>
             <Text font={"title2"}>
               {displayTitle}
             </Text>
@@ -143,18 +143,7 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
         <VStack
           alignment={"leading"}
           spacing={12}
-          padding={16}
-          background={{
-            style: {
-              light: "rgba(239, 246, 255, 0.95)",
-              dark: "rgba(37, 99, 235, 0.14)",
-            },
-            shape: {
-              type: "rect",
-              cornerRadius: 24,
-              style: "continuous",
-            },
-          }}
+          padding={{ vertical: 8 }}
           listRowSeparator="hidden">
           <HStack spacing={12}>
             <TransportControls
@@ -175,12 +164,12 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
       <Section header={<Text font={"caption"}>歌词</Text>}>
         <VStack
           alignment={"leading"}
-          spacing={8}
+          spacing={10}
           listRowSeparator="hidden">
           <Text font={"caption"} foregroundColor={"secondary"}>
             {lyricStatus}
           </Text>
-          <Text font={currentLyric ? "headline" : "body"}>
+          <Text font={currentLyric ? "title3" : "body"}>
             {currentLyric?.text ||
               "进入歌词页后会自动搜索 QQ 歌词，也支持导入 `.lrc` / `.txt`。"}
           </Text>

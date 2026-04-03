@@ -790,31 +790,31 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         <Section header={<Text font={"caption"}>当前歌单</Text>}>
           <VStack
             alignment={"leading"}
-            spacing={16}
-            padding={16}
+            spacing={14}
+            padding={{ horizontal: 16, vertical: 18 }}
             background={{
               style: {
-                light: "rgba(248, 250, 252, 0.92)",
-                dark: "rgba(255, 255, 255, 0.05)",
+                light: "rgba(248, 250, 252, 0.9)",
+                dark: "rgba(255, 255, 255, 0.045)",
               },
               shape: {
                 type: "rect",
-                cornerRadius: 28,
+                cornerRadius: 26,
                 style: "continuous",
               },
             }}
             listRowSeparator="hidden">
-            <HStack spacing={16}>
+            <HStack spacing={14}>
               <ArtworkView
                 cover={sourceCover || currentTrack?.cover}
-                width={112}
-                height={72}
+                width={118}
+                height={78}
                 contentMode="fill"
                 backgroundStyle="none"
-                cornerRadius={20}
+                cornerRadius={18}
                 fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
               />
-              <VStack alignment={"leading"} spacing={6}>
+              <VStack alignment={"leading"} spacing={4}>
                 <Text font={"title3"}>{sourceTitle}</Text>
                 <Text font={"subheadline"} foregroundColor={"secondary"}>
                   {currentSourceKind} · {currentSourceSummary}
@@ -824,7 +824,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 </Text>
               </VStack>
             </HStack>
-            <VStack alignment={"leading"} spacing={4}>
+            <VStack alignment={"leading"} spacing={2}>
               <Text font={"caption"} foregroundColor={"secondary"}>
                 当前曲目
               </Text>
@@ -851,7 +851,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                   />
               }>
                 <Text font={"body"} foregroundColor={"systemBlue"}>
-                  歌单库
+                  打开歌单库
                 </Text>
               </NavigationLink>
               <Button
@@ -891,16 +891,16 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         <Section header={<Text font={"caption"}>迷你播放器</Text>}>
           <VStack
             alignment={"leading"}
-            spacing={14}
-            padding={16}
+            spacing={12}
+            padding={{ horizontal: 16, vertical: 16 }}
             background={{
               style: {
-                light: "rgba(239, 246, 255, 0.96)",
-                dark: "rgba(37, 99, 235, 0.16)",
+                light: "rgba(239, 246, 255, 0.94)",
+                dark: "rgba(37, 99, 235, 0.13)",
               },
               shape: {
                 type: "rect",
-                cornerRadius: 28,
+                cornerRadius: 24,
                 style: "continuous",
               },
             }}
@@ -925,14 +925,14 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               <HStack spacing={14}>
                 <ArtworkView
                   cover={currentTrack?.cover || sourceCover}
-                  width={64}
-                  height={64}
+                  width={66}
+                  height={66}
                   contentMode="fill"
                   backgroundStyle="none"
-                  cornerRadius={18}
+                  cornerRadius={16}
                   fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
                 />
-                <VStack alignment={"leading"} spacing={4}>
+                <VStack alignment={"leading"} spacing={3}>
                   <Text font={"headline"}>
                     {currentTrackLabel}
                   </Text>
@@ -957,7 +957,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               </Text>
             ) : null}
 
-            <HStack spacing={10}>
+            <HStack spacing={12}>
               <TransportControls
                 compact
                 playbackState={playbackState}
@@ -965,11 +965,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 onPrimaryAction={() => void handlePrimaryAction()}
                 onNext={() => void skipBy(1)}
               />
-              <Spacer />
               <PlaybackModeControl
                 playbackMode={playbackMode}
                 onCyclePlaybackMode={cyclePlaybackMode}
               />
+              <Spacer />
             </HStack>
           </VStack>
         </Section>

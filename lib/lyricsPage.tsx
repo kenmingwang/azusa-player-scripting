@@ -3,8 +3,10 @@ import {
   Dialog,
   DocumentPicker,
   FileManager,
+  HStack,
   List,
   Section,
+  Spacer,
   Text,
   VStack,
   useEffect,
@@ -18,6 +20,7 @@ import {
   fetchLyricBySongMid,
   searchLyricOptions,
 } from "./lyricSearch";
+import { PlaybackProgressView } from "./playbackProgressView";
 import { getSharedPlayer } from "./player";
 import {
   clearTrackLyrics,
@@ -285,6 +288,15 @@ export function LyricsPage(props: LyricsPageProps) {
       ? "在线歌词"
       : "本地歌词"
     : "还没有歌词";
+  const focusedLyric = activeIndex >= 0 ? parsedLyrics.lines[activeIndex] ?? null : null;
+  const previousLines =
+    activeIndex >= 0
+      ? visibleLines.filter(({ index }) => index < activeIndex)
+      : visibleLines.slice(0, Math.max(0, visibleLines.length - 1));
+  const nextLines =
+    activeIndex >= 0
+      ? visibleLines.filter(({ index }) => index > activeIndex)
+      : [];
 
   return (
     <List
@@ -293,44 +305,99 @@ export function LyricsPage(props: LyricsPageProps) {
       listStyle={"plain"}
     >
       <Section header={<Text font={"caption"}>当前歌曲</Text>}>
-        <VStack alignment={"leading"} spacing={4}>
+        <VStack alignment={"leading"} spacing={8}>
           <Text font={"title3"}>
             {track ? displayTrackTitle(track) : "还没有正在播放的歌曲"}
           </Text>
           <Text font={"subheadline"} foregroundColor={"secondary"}>
             {track?.artist || "Azusa"}
           </Text>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            {track ? `播放时间 ${formatTime(progress.currentTime)}` : "请先播放一首歌"}
-          </Text>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            搜词关键字: {searchKey || "未识别"}
-          </Text>
+          {track ? <PlaybackProgressView progress={progress} /> : null}
+          <HStack spacing={8}>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {track ? `播放时间 ${formatTime(progress.currentTime)}` : "请先播放一首歌"}
+            </Text>
+            <Spacer />
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              搜词关键字: {searchKey || "未识别"}
+            </Text>
+          </HStack>
         </VStack>
       </Section>
 
+      <Section header={<Text font={"caption"}>当前歌词</Text>}>
+        {!track ? (
+          <Text foregroundColor={"secondary"}>
+            先开始播放，再进入歌词页。
+          </Text>
+        ) : !parsedLyrics.lines.length ? (
+          <VStack alignment={"leading"} spacing={4}>
+            <Text font={"body"}>这首歌还没有歌词。</Text>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              现在会自动搜索 QQ 候选，也支持手动导入本地 `.lrc` / `.txt`。
+            </Text>
+          </VStack>
+        ) : (
+          <VStack
+            alignment={"center"}
+            spacing={10}
+            padding={{ vertical: 8 }}
+            listRowSeparator="hidden">
+            {previousLines.map(({ line }) => (
+              <Text
+                key={line.id}
+                font={"body"}
+                foregroundColor={"secondary"}>
+                {line.text}
+              </Text>
+            ))}
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {lyricStatus}
+              {lyricsEntry?.selectedLabel ? ` · ${lyricsEntry.selectedLabel}` : ""}
+            </Text>
+            <Text
+              font={"largeTitle"}
+              multilineTextAlignment={"center"}
+              foregroundColor={"systemBlue"}>
+              {focusedLyric?.text || visibleLines[0]?.line.text || "…"}
+            </Text>
+            {focusedLyric?.timeSeconds != null ? (
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                {formatTime(focusedLyric.timeSeconds)}
+              </Text>
+            ) : null}
+            {nextLines.map(({ line }) => (
+              <Text
+                key={line.id}
+                font={"body"}
+                foregroundColor={"secondary"}>
+                {line.text}
+              </Text>
+            ))}
+          </VStack>
+        )}
+      </Section>
+
       <Section header={<Text font={"caption"}>歌词管理</Text>}>
-        <Button
-          title={busy ? "处理中..." : "导入 LRC / TXT 文件"}
-          buttonStyle="borderedProminent"
-          action={() => void importLyricsFile()}
-        />
-        <Button
-          title={searching ? "搜索中..." : "重新搜索 QQ 歌词"}
-          buttonStyle="bordered"
-          action={() => setSearchNonce((current) => current + 1)}
-        />
-        {rawLyrics ? (
+        <HStack spacing={10}>
           <Button
-            title="清除当前歌词"
-            buttonStyle="bordered"
-            action={() => void clearLyrics()}
+            title={busy ? "处理中..." : "导入 LRC / TXT"}
+            buttonStyle="borderedProminent"
+            action={() => void importLyricsFile()}
           />
-        ) : null}
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          当前状态: {lyricStatus}
-          {lyricsEntry?.selectedLabel ? ` · ${lyricsEntry.selectedLabel}` : ""}
-        </Text>
+          <Button
+            title={searching ? "搜索中..." : "重新搜索"}
+            buttonStyle="bordered"
+            action={() => setSearchNonce((current) => current + 1)}
+          />
+          {rawLyrics ? (
+            <Button
+              title="清除"
+              buttonStyle="bordered"
+              action={() => void clearLyrics()}
+            />
+          ) : null}
+        </HStack>
         {message ? (
           <Text font={"caption"} foregroundColor={"secondary"}>
             {message}
@@ -360,20 +427,9 @@ export function LyricsPage(props: LyricsPageProps) {
         </Section>
       ) : null}
 
-      <Section header={<Text font={"caption"}>歌词内容</Text>}>
-        {!track ? (
-          <Text foregroundColor={"secondary"}>
-            先开始播放，再进入歌词页。
-          </Text>
-        ) : !parsedLyrics.lines.length ? (
-          <VStack alignment={"leading"} spacing={4}>
-            <Text font={"body"}>这首歌还没有歌词。</Text>
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              现在会自动搜索 QQ 候选，也支持手动导入本地 `.lrc` / `.txt`。
-            </Text>
-          </VStack>
-        ) : (
-          visibleLines.map(({ line, index }) => {
+      {parsedLyrics.lines.length ? (
+        <Section header={<Text font={"caption"}>全部歌词片段</Text>}>
+          {visibleLines.map(({ line, index }) => {
             const isActive = activeIndex === index;
             return (
               <VStack
@@ -388,15 +444,15 @@ export function LyricsPage(props: LyricsPageProps) {
                   </Text>
                 ) : null}
                 <Text
-                  font={isActive ? "title3" : "body"}
+                  font={isActive ? "headline" : "body"}
                   foregroundColor={isActive ? "systemBlue" : undefined}>
                   {line.text}
                 </Text>
               </VStack>
             );
-          })
-        )}
-      </Section>
+          })}
+        </Section>
+      ) : null}
     </List>
   );
 }
