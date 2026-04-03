@@ -4,9 +4,13 @@
   "version": "0.1.0",
   "description": "Azusa Player client prototype built for Scripting on iPhone.",
   "scripts": {
-    "typecheck": "tsc -p ./tsconfig.json --pretty false"
+    "typecheck": "tsc -p ./tsconfig.json --pretty false",
+    "preview": "npx -y -p node@22 -p scripting-cli -c 'scripting-cli start'"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "scripting-cli": "^1.2.5"
   }
 }
