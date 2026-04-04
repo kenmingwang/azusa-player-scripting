@@ -104,8 +104,8 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
           listRowSeparator="hidden">
           <ArtworkView
             cover={props.artworkUrl}
-            width={236}
-            height={236}
+            width={300}
+            height={188}
             contentMode="fill"
             backgroundStyle="none"
             cornerRadius={28}

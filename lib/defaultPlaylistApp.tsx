@@ -807,7 +807,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             <HStack spacing={14}>
               <ArtworkView
                 cover={sourceCover || currentTrack?.cover}
-                size={92}
+                width={124}
+                height={78}
                 contentMode="fill"
                 backgroundStyle="none"
                 cornerRadius={18}
@@ -924,8 +925,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               <HStack spacing={14}>
                 <ArtworkView
                   cover={currentTrack?.cover || sourceCover}
-                  width={66}
-                  height={66}
+                  width={84}
+                  height={54}
                   contentMode="fill"
                   backgroundStyle="none"
                   cornerRadius={16}
