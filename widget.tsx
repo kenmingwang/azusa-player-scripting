@@ -169,10 +169,14 @@ function WidgetView() {
               imageUrl={cover}
               frame={{ width: isSmall ? 60 : 68, height: isSmall ? 60 : 68 }}
               resizable
-              aspectRatio={{ contentMode: "fit" }}
+              aspectRatio={{ contentMode: "fill" }}
               interpolation="high"
               antialiased
-              padding={6}
+              clipShape={{
+                type: "rect",
+                cornerRadius: 16,
+                style: "continuous",
+              }}
               widgetAccentedRenderingMode="fullColor"
             />
           </ZStack>

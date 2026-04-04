@@ -8,6 +8,7 @@ type PlaybackProgressViewProps = {
 
 export function PlaybackProgressView(props: PlaybackProgressViewProps) {
   const { progress } = props;
+  const hiddenValueLabel = <></>;
 
   if (progress.isRunning && progress.timerFrom && progress.timerTo) {
     return (
@@ -16,6 +17,7 @@ export function PlaybackProgressView(props: PlaybackProgressViewProps) {
         timerTo={progress.timerTo}
         countsDown={false}
         progressViewStyle="linear"
+        currentValueLabel={hiddenValueLabel}
       />
     );
   }
@@ -26,6 +28,7 @@ export function PlaybackProgressView(props: PlaybackProgressViewProps) {
         value={Math.max(0, Math.min(progress.currentTime, progress.duration))}
         total={progress.duration}
         progressViewStyle="linear"
+        currentValueLabel={hiddenValueLabel}
       />
     );
   }
