@@ -11,6 +11,12 @@ export type PlaybackMode =
   | "repeatOne"
   | "shuffle";
 
+export type PlaylistKind = "user" | "source" | "search";
+
+export type PlayerSettings = {
+  lyricFontSize?: number;
+};
+
 export type PlaybackProgressSnapshot = {
   currentTime: number;
   duration: number;
@@ -79,6 +85,23 @@ export type TrackPreview = {
   durationSeconds?: number;
 };
 
+export type PlaylistTableState = {
+  filterText?: string;
+  highlightedTrackId?: string;
+};
+
+export type PlaylistRecord = {
+  id: string;
+  title: string;
+  kind: PlaylistKind;
+  source?: SourceDescriptor;
+  ownerName?: string;
+  cover?: string;
+  tracks: Track[];
+  updatedAt: string;
+  tableState?: PlaylistTableState;
+};
+
 export type ImportResult = {
   source: SourceDescriptor;
   sourceTitle: string;
@@ -122,11 +145,15 @@ export type LyricSearchOption = {
   label: string;
 };
 
+export type LyricSourceKind = "local" | "qq-auto" | "qq-manual";
+
 export type TrackLyricsEntry = {
   rawLyric: string;
   songMid?: string;
   selectedLabel?: string;
   searchKey?: string;
+  offsetMs?: number;
+  sourceKind?: LyricSourceKind;
   updatedAt: string;
 };
 
@@ -140,4 +167,8 @@ export type PersistedState = {
   currentTrackId?: string;
   playbackSnapshot?: PlaybackSnapshot | null;
   pendingExternalCommand?: PendingExternalCommand | null;
+  playlistLibrary: PlaylistRecord[];
+  activePlaylistId?: string;
+  searchPlaylistId?: string;
+  playerSettings?: PlayerSettings;
 };

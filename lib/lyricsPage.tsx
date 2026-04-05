@@ -8,6 +8,7 @@ import {
   Section,
   Spacer,
   Text,
+  TextField,
   VStack,
   useEffect,
   useMemo,
@@ -26,9 +27,20 @@ import {
   clearTrackLyrics,
   loadTrackLyricsEntry,
   saveTrackLyricsEntry,
+  setTrackLyricOffset,
 } from "./storage";
 import { usePlayerProgress } from "./usePlayerProgress";
 import type { LyricSearchOption, Track, TrackLyricsEntry } from "./types";
+
+const globalRuntime = globalThis as any;
+const setIntervalApi =
+  typeof globalRuntime.setInterval === "function"
+    ? globalRuntime.setInterval.bind(globalRuntime)
+    : null;
+const clearIntervalApi =
+  typeof globalRuntime.clearInterval === "function"
+    ? globalRuntime.clearInterval.bind(globalRuntime)
+    : null;
 
 type LyricsPageProps = {
   track: Track | null;
@@ -79,6 +91,8 @@ export function LyricsPage(props: LyricsPageProps) {
   const [message, setMessage] = useState("");
   const [searchNonce, setSearchNonce] = useState(0);
   const [autoApplyAllowed, setAutoApplyAllowed] = useState(true);
+  const [searchText, setSearchText] = useState(defaultSearchKey(track));
+  const [followTick, setFollowTick] = useState(Date.now());
 
   useEffect(() => {
     if (!track) {
@@ -88,6 +102,7 @@ export function LyricsPage(props: LyricsPageProps) {
       setSelectedSongMid("");
       setMessage("");
       setAutoApplyAllowed(true);
+      setSearchText("");
       return;
     }
 
@@ -98,12 +113,26 @@ export function LyricsPage(props: LyricsPageProps) {
     setSelectedSongMid(nextEntry?.songMid ?? "");
     setMessage("");
     setAutoApplyAllowed(!nextEntry?.rawLyric);
+    setSearchText(nextEntry?.searchKey ?? defaultSearchKey(track));
   }, [track?.id]);
 
-  const searchKey = useMemo(
-    () => lyricsEntry?.searchKey ?? defaultSearchKey(track),
-    [lyricsEntry?.searchKey, track?.id],
-  );
+  useEffect(() => {
+    if (!setIntervalApi || !track) {
+      return;
+    }
+
+    const timer = setIntervalApi(() => {
+      setFollowTick(Date.now());
+    }, 300) as unknown as number;
+
+    return () => {
+      if (clearIntervalApi) {
+        clearIntervalApi(timer);
+      }
+    };
+  }, [track?.id]);
+
+  const searchKey = searchText.trim();
 
   useEffect(() => {
     if (!track || !searchKey.trim()) {
@@ -164,9 +193,17 @@ export function LyricsPage(props: LyricsPageProps) {
   }, [track?.id, searchKey, searchNonce, autoApplyAllowed]);
 
   const parsedLyrics = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
+  const offsetMs = lyricsEntry?.offsetMs ?? 0;
+  const effectiveCurrentTime = useMemo(() => {
+    const baseTime =
+      progress.isRunning && progress.timerFrom
+        ? Math.max(0, (followTick - progress.timerFrom) / 1000)
+        : progress.currentTime;
+    return Math.max(0, baseTime + offsetMs / 1000);
+  }, [progress.currentTime, progress.isRunning, progress.timerFrom, followTick, offsetMs]);
   const activeIndex = useMemo(
-    () => activeLyricLineIndex(parsedLyrics, progress.currentTime),
-    [parsedLyrics, progress.currentTime],
+    () => activeLyricLineIndex(parsedLyrics, effectiveCurrentTime),
+    [parsedLyrics, effectiveCurrentTime],
   );
   const visibleLines = useMemo(() => {
     if (!parsedLyrics.lines.length) {
@@ -200,6 +237,8 @@ export function LyricsPage(props: LyricsPageProps) {
         songMid: option.songMid,
         selectedLabel: option.label,
         searchKey,
+        offsetMs: lyricsEntry?.offsetMs ?? 0,
+        sourceKind: auto ? "qq-auto" : "qq-manual",
         updatedAt: new Date().toISOString(),
       };
 
@@ -240,6 +279,8 @@ export function LyricsPage(props: LyricsPageProps) {
       const nextEntry: TrackLyricsEntry = {
         rawLyric: nextLyrics,
         searchKey,
+        offsetMs: lyricsEntry?.offsetMs ?? 0,
+        sourceKind: "local",
         updatedAt: new Date().toISOString(),
       };
       saveTrackLyricsEntry(trackStorageInput(track), nextEntry);
@@ -283,6 +324,24 @@ export function LyricsPage(props: LyricsPageProps) {
     setSearchNonce((current) => current + 1);
   }
 
+  function adjustOffset(deltaMs: number) {
+    if (!track) {
+      return;
+    }
+
+    const nextEntry = setTrackLyricOffset(
+      trackStorageInput(track),
+      (lyricsEntry?.offsetMs ?? 0) + deltaMs,
+    );
+
+    if (!nextEntry) {
+      return;
+    }
+
+    setLyricsEntry(nextEntry);
+    setMessage(`歌词偏移已调整到 ${nextEntry.offsetMs ?? 0}ms`);
+  }
+
   const lyricStatus = parsedLyrics.lines.length
     ? lyricsEntry?.songMid
       ? "在线歌词"
@@ -315,13 +374,71 @@ export function LyricsPage(props: LyricsPageProps) {
           {track ? <PlaybackProgressView progress={progress} /> : null}
           <HStack spacing={8}>
             <Text font={"caption"} foregroundColor={"secondary"}>
-              {track ? `播放时间 ${formatTime(progress.currentTime)}` : "请先播放一首歌"}
+              {track ? `播放时间 ${formatTime(effectiveCurrentTime)}` : "请先播放一首歌"}
             </Text>
             <Spacer />
             <Text font={"caption"} foregroundColor={"secondary"}>
-              搜词关键字: {searchKey || "未识别"}
+              偏移 {offsetMs}ms
             </Text>
           </HStack>
+        </VStack>
+      </Section>
+
+      <Section header={<Text font={"caption"}>搜索歌词</Text>}>
+        <VStack alignment={"leading"} spacing={10}>
+          <TextField
+            title="搜索关键字"
+            placeholder="手动输入歌名重新搜词"
+            value={searchText}
+            onChanged={setSearchText}
+          />
+          <HStack spacing={10}>
+            <Button
+              title={searching ? "搜索中..." : "重新搜索"}
+              buttonStyle="borderedProminent"
+              action={() => {
+                setAutoApplyAllowed(false);
+                setSearchNonce((current) => current + 1);
+              }}
+            />
+            <Button
+              title={busy ? "处理中..." : "导入 LRC / TXT"}
+              buttonStyle="bordered"
+              action={() => void importLyricsFile()}
+            />
+            {rawLyrics ? (
+              <Button
+                title="清除"
+                buttonStyle="bordered"
+                action={() => void clearLyrics()}
+              />
+            ) : null}
+          </HStack>
+        </VStack>
+      </Section>
+
+      <Section header={<Text font={"caption"}>歌词偏移</Text>}>
+        <VStack alignment={"leading"} spacing={10}>
+          <HStack spacing={10}>
+            <Button
+              title="-50ms"
+              buttonStyle="bordered"
+              action={() => adjustOffset(-50)}
+            />
+            <Button
+              title="归零"
+              buttonStyle="bordered"
+              action={() => adjustOffset(-(lyricsEntry?.offsetMs ?? 0))}
+            />
+            <Button
+              title="+50ms"
+              buttonStyle="bordered"
+              action={() => adjustOffset(50)}
+            />
+          </HStack>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            正值会让歌词更早进入高亮，负值会更晚。步进固定 50ms。
+          </Text>
         </VStack>
       </Section>
 
@@ -354,6 +471,7 @@ export function LyricsPage(props: LyricsPageProps) {
             <Text font={"caption"} foregroundColor={"secondary"}>
               {lyricStatus}
               {lyricsEntry?.selectedLabel ? ` · ${lyricsEntry.selectedLabel}` : ""}
+              {lyricsEntry?.sourceKind ? ` · ${lyricsEntry.sourceKind}` : ""}
             </Text>
             <Text
               font={"largeTitle"}
@@ -378,32 +496,13 @@ export function LyricsPage(props: LyricsPageProps) {
         )}
       </Section>
 
-      <Section header={<Text font={"caption"}>歌词管理</Text>}>
-        <HStack spacing={10}>
-          <Button
-            title={busy ? "处理中..." : "导入 LRC / TXT"}
-            buttonStyle="borderedProminent"
-            action={() => void importLyricsFile()}
-          />
-          <Button
-            title={searching ? "搜索中..." : "重新搜索"}
-            buttonStyle="bordered"
-            action={() => setSearchNonce((current) => current + 1)}
-          />
-          {rawLyrics ? (
-            <Button
-              title="清除"
-              buttonStyle="bordered"
-              action={() => void clearLyrics()}
-            />
-          ) : null}
-        </HStack>
-        {message ? (
+      {message ? (
+        <Section header={<Text font={"caption"}>状态</Text>}>
           <Text font={"caption"} foregroundColor={"secondary"}>
             {message}
           </Text>
-        ) : null}
-      </Section>
+        </Section>
+      ) : null}
 
       {track ? (
         <Section header={<Text font={"caption"}>歌词候选</Text>}>

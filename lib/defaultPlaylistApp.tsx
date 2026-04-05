@@ -7,7 +7,6 @@ import {
   List,
   NavigationLink,
   NavigationStack,
-  ProgressView,
   Section,
   Script,
   Spacer,
@@ -40,14 +39,26 @@ import { PlaybackProgressView } from "./playbackProgressView";
 import { usePlayerProgress } from "./usePlayerProgress";
 import { SourceLibraryPage } from "./sourceLibraryPage";
 import {
+  addTracksToPlaylist,
   clearPendingExternalCommand,
+  createPlaylist,
+  deletePlaylist,
+  deleteTracksFromPlaylist,
+  getActivePlaylist,
+  getPlaylistById,
   loadState,
   persistPlayerState,
   rememberRecentSource,
+  renamePlaylist,
+  renameTrackInPlaylist,
+  replacePlaylistTracks,
+  saveSearchPlaylist,
+  saveSourcePlaylist,
+  setActivePlaylist,
+  setPlaylistTableState,
 } from "./storage";
 import {
   createVideoSource,
-  isSameSource,
   parseSourceInput,
   sourceKindLabel,
   sourceSecondaryLabel,
@@ -55,6 +66,7 @@ import {
 import type {
   PendingExternalCommand,
   PlaybackMode,
+  PlaylistRecord,
   PlaybackUiState,
   SourceDescriptor,
   Track,
@@ -80,8 +92,6 @@ const ScriptApi = (Script as any) ?? globalRuntime.Script;
 type DefaultPlaylistAppProps = {
   initialInput?: string;
 };
-
-type SourcePromptKind = SourceDescriptor["kind"];
 
 function describeState(state: PlaybackUiState, detail?: string) {
   if (detail) return detail;
@@ -114,41 +124,6 @@ function trackStatusLabel(
   if (playbackState === "paused") return "已暂停";
   if (playbackState === "error") return "失败";
   return "当前";
-}
-
-function promptMeta(kind: SourcePromptKind) {
-  switch (kind) {
-    case "video":
-      return {
-        title: "导入视频",
-        message: "输入 BV 号或 Bilibili 视频链接。",
-        placeholder: "例如 BV1wr4y1v7TA",
-      };
-    case "favorite":
-      return {
-        title: "导入收藏夹",
-        message: "输入 favorite:media_id，或直接贴 ml 开头的收藏夹链接。",
-        placeholder: "例如 favorite:69072721 或 ml69072721",
-      };
-    case "collection":
-      return {
-        title: "导入合集",
-        message: "支持 season:mid:id、series:mid:id，或对应的 space 链接。",
-        placeholder: "例如 season:8251621:6203453",
-      };
-    case "channel":
-      return {
-        title: "导入频道",
-        message: "输入 channel:mid，或直接贴 UP 主页链接。",
-        placeholder: "例如 channel:8251621",
-      };
-    default:
-      return {
-        title: "导入来源",
-        message: "输入一个来源标识。",
-        placeholder: "",
-      };
-  }
 }
 
 function commandLabel(command: PendingExternalCommand["type"]) {
@@ -234,24 +209,59 @@ function displayTrackTitle(track: Track | null, sourceTitle: string) {
     : track.title;
 }
 
+function playlistKindLabel(playlist: PlaylistRecord | null) {
+  if (!playlist) {
+    return "歌单";
+  }
+
+  switch (playlist.kind) {
+    case "search":
+      return "搜索歌单";
+    case "source":
+      return playlist.source ? sourceKindLabel(playlist.source.kind) : "来源歌单";
+    case "user":
+    default:
+      return "自定义歌单";
+  }
+}
+
+function playlistSummaryLabel(playlist: PlaylistRecord | null) {
+  if (!playlist) {
+    return "";
+  }
+
+  if (playlist.kind === "user") {
+    return `共 ${playlist.tracks.length} 首`;
+  }
+
+  if (playlist.source) {
+    return `${sourceKindLabel(playlist.source.kind)} · ${sourceSecondaryLabel(playlist.source)}`;
+  }
+
+  return `共 ${playlist.tracks.length} 首`;
+}
+
 export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const persistedState = loadState();
   const requestedInput = props.initialInput?.trim() || "";
   const requestedSource = requestedInput ? parseSourceInput(requestedInput) : null;
-  const storedSource =
+  const initialPlaylist =
+    getActivePlaylist(persistedState) ??
+    persistedState.playlistLibrary[0] ??
+    null;
+  const initialSource =
+    requestedSource ||
+    initialPlaylist?.source ||
     persistedState.sourceDescriptor ||
     (persistedState.lastInput ? parseSourceInput(persistedState.lastInput) : null) ||
     DEFAULT_SOURCE;
-  const initialSource = requestedSource || storedSource;
-  const canRestoreQueue = !requestedSource || isSameSource(requestedSource, storedSource);
-  const initialTracks = canRestoreQueue ? persistedState.queue : [];
-  const initialCurrentIndex =
-    canRestoreQueue && persistedState.currentTrackId
-      ? initialTracks.findIndex((track) => track.id === persistedState.currentTrackId)
-      : -1;
+  const initialTracks = initialPlaylist?.tracks ?? persistedState.queue;
+  const initialCurrentIndex = persistedState.currentTrackId
+    ? initialTracks.findIndex((track) => track.id === persistedState.currentTrackId)
+    : -1;
   const initialCurrentTrack =
     initialCurrentIndex >= 0 ? initialTracks[initialCurrentIndex] : null;
-  const initialSnapshot = canRestoreQueue ? persistedState.playbackSnapshot : null;
+  const initialSnapshot = persistedState.playbackSnapshot;
   const initialInputError =
     requestedInput && !requestedSource
       ? "这个来源格式暂时没识别出来，请改成 BV / 视频链接，或 favorite:mediaId、season:mid:id、series:mid:id、channel:mid"
@@ -286,17 +296,22 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }),
     [],
   );
+  const playlistBridge = useMemo(
+    () => ({
+      activePlaylistId: persistedState.activePlaylistId ?? initialPlaylist?.id ?? "",
+    }),
+    [],
+  );
 
-  const [activeSource, setActiveSource] = useState(initialSource);
+  const [playlistLibrary, setPlaylistLibrary] = useState(
+    persistedState.playlistLibrary,
+  );
+  const [activePlaylistId, setActivePlaylistId] = useState(
+    persistedState.activePlaylistId ?? initialPlaylist?.id ?? "",
+  );
   const [loading, setLoading] = useState(false);
   const [playLoading, setPlayLoading] = useState(false);
   const [error, setError] = useState(null as string | null);
-  const [sourceTitle, setSourceTitle] = useState(
-    initialSnapshot?.sourceTitle || initialSource.titleHint || "Azusa",
-  );
-  const [ownerName, setOwnerName] = useState(initialSnapshot?.ownerName || "");
-  const [sourceCover, setSourceCover] = useState(initialSnapshot?.cover || "");
-  const [tracks, setTracks] = useState(initialTracks);
   const [recentSources, setRecentSources] = useState(
     persistedState.recentSources ?? [],
   );
@@ -319,43 +334,87 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     ScriptApi?.env === "index" ? "idle" : "unsupported",
   );
   const [queueQuery, setQueueQuery] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
   const progress = usePlayerProgress(player);
+  const activePlaylist = useMemo(
+    () =>
+      playlistLibrary.find((playlist) => playlist.id === activePlaylistId) ??
+      playlistLibrary[0] ??
+      null,
+    [playlistLibrary, activePlaylistId],
+  );
+  const tracks = activePlaylist?.tracks ?? [];
+  const sourceTitle =
+    activePlaylist?.title || initialSnapshot?.sourceTitle || initialSource.titleHint || "Azusa";
+  const ownerName = activePlaylist?.ownerName || initialSnapshot?.ownerName || "";
+  const sourceCover = activePlaylist?.cover || initialSnapshot?.cover || "";
+  const playbackSource =
+    activePlaylist?.source ??
+    (currentTrack?.bvid ? createVideoSource(currentTrack.bvid, sourceTitle) : initialSource);
 
-  async function loadSource(nextSource?: SourceDescriptor) {
-    const source = nextSource || activeSource || DEFAULT_SOURCE;
-    const changingSource = !isSameSource(source, activeSource);
+  useEffect(() => {
+    playlistBridge.activePlaylistId = activePlaylistId;
+  }, [activePlaylistId]);
+
+  function syncFromState(nextState: ReturnType<typeof loadState>) {
+    setPlaylistLibrary(nextState.playlistLibrary);
+    setActivePlaylistId(nextState.activePlaylistId ?? nextState.playlistLibrary[0]?.id ?? "");
+    setRecentSources(nextState.recentSources ?? []);
+  }
+
+  function applyPlaylistToPlayer(
+    playlist: PlaylistRecord | null,
+    preserveTrackId?: string | null,
+  ) {
+    const matchedTrackId =
+      preserveTrackId &&
+      playlist?.tracks.some((track) => track.id === preserveTrackId)
+        ? preserveTrackId
+        : null;
+
+    if (!matchedTrackId) {
+      player.stop();
+      setCurrentTrack(null);
+      setCurrentIndex(-1);
+      setPlaybackState("idle");
+      setPlaybackDetail("");
+    }
+
+    player.setQueue(playlist?.tracks ?? [], matchedTrackId);
+    setQueueQuery(playlist?.tableState?.filterText ?? "");
+    setSelectionMode(false);
+    setSelectedTrackIds([]);
+
+    if (matchedTrackId && playlist) {
+      const matchedIndex = playlist.tracks.findIndex(
+        (track) => track.id === matchedTrackId,
+      );
+      setCurrentIndex(matchedIndex);
+      setCurrentTrack(matchedIndex >= 0 ? playlist.tracks[matchedIndex] : null);
+    }
+  }
+
+  async function importSourceToSearch(nextSource?: SourceDescriptor) {
+    const source = nextSource || activePlaylist?.source || playbackSource || DEFAULT_SOURCE;
 
     setLoading(true);
     setError(null);
 
     try {
       const result = await importFromSource(source);
-      const matchedTrackId = changingSource ? undefined : currentTrack?.id;
-      const matchedIndex = matchedTrackId
-        ? result.tracks.findIndex((track) => track.id === matchedTrackId)
-        : -1;
-
-      if (changingSource) {
-        player.stop();
-      }
-
-      setActiveSource(result.source);
-      setSourceTitle(result.sourceTitle);
-      setOwnerName(result.ownerName);
-      setSourceCover(result.cover || "");
-      setTracks(result.tracks);
-      setCurrentIndex(matchedIndex);
-      setCurrentTrack(matchedIndex >= 0 ? result.tracks[matchedIndex] : null);
-      setRecentSources((current) => {
-        const next = [
-          result.source,
-          ...current.filter((item) => item.input !== result.source.input),
-        ].slice(0, 8);
-        return next;
+      saveSearchPlaylist({
+        title: result.sourceTitle,
+        source: result.source,
+        ownerName: result.ownerName,
+        cover: result.cover,
+        tracks: result.tracks,
+        activate: true,
       });
-
-      rememberRecentSource(result.source);
-      player.setQueue(result.tracks, matchedTrackId ?? null);
+      const nextState = rememberRecentSource(result.source);
+      syncFromState(nextState);
+      const nextPlaylist = getActivePlaylist(nextState);
+      applyPlaylistToPlayer(nextPlaylist, currentTrack?.id);
     } catch (fetchError) {
       setError(
         `来源导入失败: ${
@@ -367,30 +426,52 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
   }
 
-  async function promptForSource(kind: SourcePromptKind) {
-    const meta = promptMeta(kind);
-    const defaultValue = activeSource.kind === kind ? activeSource.input : "";
-    const nextInput = await Dialog.prompt({
-      title: meta.title,
-      message: meta.message,
-      defaultValue,
-      placeholder: meta.placeholder,
-      confirmLabel: "导入",
-      cancelLabel: "取消",
-      selectAll: true,
-    });
-
-    if (nextInput == null) {
+  async function refreshPlaylistSource(playlistId?: string) {
+    const state = loadState();
+    const playlist = getPlaylistById(playlistId ?? activePlaylistId, state);
+    if (!playlist?.source) {
       return;
     }
 
-    const source = parseSourceInput(nextInput.trim());
-    if (!source || source.kind !== kind) {
-      setError(`这个输入不是有效的${sourceKindLabel(kind)}来源`);
-      return;
-    }
+    setLoading(true);
+    setError(null);
 
-    await loadSource(source);
+    try {
+      const result = await importFromSource(playlist.source);
+      if (playlist.kind === "search") {
+        saveSearchPlaylist({
+          title: result.sourceTitle,
+          source: result.source,
+          ownerName: result.ownerName,
+          cover: result.cover,
+          tracks: result.tracks,
+          activate: state.activePlaylistId === playlist.id,
+        });
+      } else {
+        saveSourcePlaylist({
+          playlistId: playlist.id,
+          title: result.sourceTitle,
+          source: result.source,
+          ownerName: result.ownerName,
+          cover: result.cover,
+          tracks: result.tracks,
+          activate: state.activePlaylistId === playlist.id,
+        });
+      }
+      const nextState = rememberRecentSource(result.source);
+      syncFromState(nextState);
+      if (state.activePlaylistId === playlist.id) {
+        applyPlaylistToPlayer(getActivePlaylist(nextState), currentTrack?.id);
+      }
+    } catch (fetchError) {
+      setError(
+        `来源导入失败: ${
+          fetchError instanceof Error ? fetchError.message : String(fetchError)
+        }`,
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadSourceFromInput(input: string) {
@@ -403,7 +484,124 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       return;
     }
 
-    await loadSource(source);
+    await importSourceToSearch(source);
+  }
+
+  async function openPlaylist(playlistId: string) {
+    const nextState = setActivePlaylist(playlistId);
+    syncFromState(nextState);
+    applyPlaylistToPlayer(getActivePlaylist(nextState), currentTrack?.id);
+  }
+
+  async function handleCreatePlaylist(title: string) {
+    createPlaylist(title, []);
+    const nextState = loadState();
+    syncFromState(nextState);
+    applyPlaylistToPlayer(getActivePlaylist(nextState), null);
+  }
+
+  async function handleRenamePlaylist(playlistId: string, title: string) {
+    const nextState = renamePlaylist(playlistId, title);
+    syncFromState(nextState);
+  }
+
+  async function handleDeletePlaylist(playlistId: string) {
+    const nextState = deletePlaylist(playlistId);
+    syncFromState(nextState);
+    applyPlaylistToPlayer(getActivePlaylist(nextState), currentTrack?.id);
+  }
+
+  async function handleDuplicatePlaylistToNew(
+    playlistId: string,
+    title: string,
+  ) {
+    const playlist = getPlaylistById(playlistId);
+    createPlaylist(title, playlist?.tracks ?? []);
+    const nextState = loadState();
+    syncFromState(nextState);
+    applyPlaylistToPlayer(getActivePlaylist(nextState), null);
+  }
+
+  async function addTracksByTitle(targetTitle: string, nextTracks: Track[]) {
+    const title = targetTitle.trim();
+    if (!title) {
+      return;
+    }
+
+    const beforeState = loadState();
+    const target = beforeState.playlistLibrary.find(
+      (playlist) => playlist.kind === "user" && playlist.title === title,
+    );
+
+    if (target) {
+      const nextState = addTracksToPlaylist(target.id, nextTracks);
+      syncFromState(nextState);
+      return;
+    }
+
+    const previousActivePlaylistId = activePlaylistId;
+    createPlaylist(title, nextTracks);
+    let nextState = loadState();
+    if (previousActivePlaylistId) {
+      nextState = setActivePlaylist(previousActivePlaylistId);
+    }
+    syncFromState(nextState);
+  }
+
+  async function handleAddPlaylistToTitle(playlistId: string, title: string) {
+    const playlist = getPlaylistById(playlistId);
+    await addTracksByTitle(title, playlist?.tracks ?? []);
+  }
+
+  async function handleRenameTrack(track: Track) {
+    if (!activePlaylistId) {
+      return;
+    }
+
+    const title = await Dialog.prompt({
+      title: "重命名歌曲",
+      message: "输入新的显示标题。",
+      defaultValue: displayTrackTitle(track, sourceTitle),
+      placeholder: "歌曲名",
+      confirmLabel: "保存",
+      cancelLabel: "取消",
+      selectAll: true,
+    });
+
+    if (title == null) {
+      return;
+    }
+
+    const nextState = renameTrackInPlaylist(activePlaylistId, track.id, title);
+    syncFromState(nextState);
+  }
+
+  async function handleDeleteTracks(trackIds: string[]) {
+    if (!activePlaylistId || !trackIds.length) {
+      return;
+    }
+
+    const nextState = deleteTracksFromPlaylist(activePlaylistId, trackIds);
+    syncFromState(nextState);
+    setSelectedTrackIds([]);
+    applyPlaylistToPlayer(getActivePlaylist(nextState), currentTrack?.id);
+  }
+
+  async function handleAddTrack(track: Track) {
+    const title = await Dialog.prompt({
+      title: "加入歌单",
+      message: "输入目标歌单名。若不存在，会新建一个自定义歌单。",
+      placeholder: "目标歌单名",
+      confirmLabel: "加入",
+      cancelLabel: "取消",
+      selectAll: true,
+    });
+
+    if (title == null) {
+      return;
+    }
+
+    await addTracksByTitle(title, [track]);
   }
 
   async function playTrackAt(index: number) {
@@ -489,7 +687,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       } else if (pending.type === "previous") {
         await skipBy(-1);
       } else if (pending.type === "openSource" && pending.source) {
-        await loadSource(pending.source);
+        await importSourceToSearch(pending.source);
       }
 
       commandBridge.lastHandledId = pending.id;
@@ -555,7 +753,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     player.setPlaybackMode(playbackMode);
     player.bind({
       onQueueChange: (queue) => {
-        setTracks(queue);
+        if (playlistBridge.activePlaylistId) {
+          const nextState = replacePlaylistTracks(playlistBridge.activePlaylistId, queue);
+          syncFromState(nextState);
+        }
       },
       onCurrentTrackChange: (track, index) => {
         setCurrentTrack(track);
@@ -573,15 +774,20 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       },
     });
 
-    if (initialTracks.length > 0) {
-      player.setQueue(initialTracks, persistedState.currentTrackId ?? null);
-    }
-
     if (initialInputError) {
       setError(initialInputError);
     }
 
-    void loadSource(initialSource);
+    if (initialTracks.length > 0) {
+      player.setQueue(initialTracks, persistedState.currentTrackId ?? null);
+    }
+
+    if (requestedSource) {
+      void importSourceToSearch(requestedSource);
+    } else if (initialPlaylist?.kind !== "user" && initialPlaylist?.source) {
+      void refreshPlaylistSource(initialPlaylist.id);
+    }
+
     void processPendingCommand();
 
     return () => {
@@ -622,7 +828,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         clearIntervalApi(timer);
       }
     };
-  }, [activeSource.input, tracks.length, currentTrack?.id, loading, playLoading]);
+  }, [activePlaylistId, tracks.length, currentTrack?.id, loading, playLoading]);
 
   useEffect(() => {
     void syncBackgroundKeepAlive();
@@ -632,10 +838,38 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     player.setPlaybackMode(playbackMode);
   }, [playbackMode]);
 
+  useEffect(() => {
+    setQueueQuery(activePlaylist?.tableState?.filterText ?? "");
+    setSelectionMode(false);
+    setSelectedTrackIds([]);
+  }, [activePlaylistId]);
+
+  useEffect(() => {
+    if (!activePlaylistId) {
+      return;
+    }
+
+    const nextState = setPlaylistTableState(activePlaylistId, {
+      filterText: queueQuery,
+    });
+    setPlaylistLibrary(nextState.playlistLibrary);
+  }, [activePlaylistId, queueQuery]);
+
+  useEffect(() => {
+    if (!activePlaylistId || !currentTrack?.id) {
+      return;
+    }
+
+    const nextState = setPlaylistTableState(activePlaylistId, {
+      highlightedTrackId: currentTrack.id,
+    });
+    setPlaylistLibrary(nextState.playlistLibrary);
+  }, [activePlaylistId, currentTrack?.id]);
+
   const playbackSnapshot = useMemo(
     () =>
       buildPlaybackSnapshot({
-        source: activeSource,
+        source: playbackSource,
         sourceTitle,
         ownerName,
         cover: sourceCover,
@@ -647,7 +881,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         playbackDetail,
       }),
     [
-      activeSource.input,
+      playbackSource.input,
       sourceTitle,
       ownerName,
       sourceCover,
@@ -661,17 +895,18 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   );
 
   useEffect(() => {
-    persistPlayerState({
-      sourceDescriptor: activeSource,
+    const nextState = persistPlayerState({
+      sourceDescriptor: playbackSource,
       sourceTitle,
       playbackMode,
       queue: tracks,
       currentTrackId: currentTrack?.id,
       playbackSnapshot,
     });
+    syncFromState(nextState);
     reloadExternalSurfaces();
   }, [
-    activeSource.input,
+    playbackSource.input,
     sourceTitle,
     ownerName,
     sourceCover,
@@ -744,10 +979,10 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
 
   const playbackLabel = describeState(playbackState, playbackDetail);
   const queueSummary = loading ? "正在同步歌单..." : `共 ${tracks.length} 首`;
-  const currentSourceSummary = sourceSecondaryLabel(activeSource);
-  const currentSourceKind = sourceKindLabel(activeSource.kind);
+  const currentSourceSummary = playlistSummaryLabel(activePlaylist);
+  const currentSourceKind = playlistKindLabel(activePlaylist);
   const visibleRecentSources = recentSources.filter(
-    (source) => source.input !== activeSource.input,
+    (source) => source.input !== playbackSource.input,
   );
   const pendingCommand = loadState().pendingExternalCommand;
   const keepAliveLabel = keepAliveStateLabel(scenePhase, keepAliveState as any);
@@ -779,6 +1014,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         track.cid,
       ].some((value) => value.toLowerCase().includes(normalizedQueueQuery));
     });
+  const canManageTracks = activePlaylist?.kind !== "source";
+  const hasSelectedTracks = selectedTrackIds.length > 0;
 
   return (
     <NavigationStack>
@@ -839,26 +1076,46 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               <NavigationLink
                 destination={
                   <SourceLibraryPage
-                    activeSource={activeSource}
+                    activePlaylistId={activePlaylistId}
+                    playlists={playlistLibrary}
                     recentSources={visibleRecentSources.slice(0, 8)}
                     loading={loading}
                     errorMessage={error}
+                    defaultQuery={playbackSource.input}
                     onSearchInput={loadSourceFromInput}
-                    onPromptSource={promptForSource}
-                    onLoadSource={loadSource}
-                    onLoadDefault={() => loadSource(DEFAULT_SOURCE)}
-                    onReload={() => loadSource()}
+                    onOpenPlaylist={openPlaylist}
+                    onCreatePlaylist={handleCreatePlaylist}
+                    onRenamePlaylist={handleRenamePlaylist}
+                    onDeletePlaylist={handleDeletePlaylist}
+                    onRefreshPlaylist={refreshPlaylistSource}
+                    onDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
+                    onAddPlaylistToTitle={handleAddPlaylistToTitle}
+                    onLoadSource={importSourceToSearch}
                   />
               }>
                 <Text font={"body"} foregroundColor={"systemBlue"}>
                   打开歌单库
                 </Text>
               </NavigationLink>
-              <Button
-                title={loading ? "同步中..." : "重新拉取"}
-                buttonStyle="bordered"
-                action={() => void loadSource()}
-              />
+              {activePlaylist?.source ? (
+                <Button
+                  title={loading ? "同步中..." : "重新拉取"}
+                  buttonStyle="bordered"
+                  action={() => void refreshPlaylistSource(activePlaylist.id)}
+                />
+              ) : null}
+              {activePlaylist?.kind === "search" ? (
+                <Button
+                  title="另存为歌单"
+                  buttonStyle="bordered"
+                  action={() =>
+                    void handleDuplicatePlaylistToNew(
+                      activePlaylist.id,
+                      `${activePlaylist.title} 收藏`,
+                    )
+                  }
+                />
+              ) : null}
             </HStack>
 
             {playerMessage || pendingCommand || error || scenePhase !== "active" ? (
@@ -975,6 +1232,74 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         </Section>
 
         <Section header={<Text font={"caption"}>播放队列</Text>}>
+          {activePlaylist?.kind === "search" && tracks.length > 0 ? (
+            <HStack spacing={10}>
+              <Button
+                title="另存为歌单"
+                buttonStyle="bordered"
+                action={() =>
+                  void handleDuplicatePlaylistToNew(
+                    activePlaylist.id,
+                    `${activePlaylist.title} 收藏`,
+                  )
+                }
+              />
+              <Button
+                title="整单加入歌单"
+                buttonStyle="bordered"
+                action={() =>
+                  void handleAddPlaylistToTitle(
+                    activePlaylist.id,
+                    activePlaylist.title,
+                  )
+                }
+              />
+            </HStack>
+          ) : null}
+
+          {canManageTracks && tracks.length > 0 ? (
+            <HStack spacing={10}>
+              <Button
+                title={selectionMode ? "结束选择" : "批量选择"}
+                buttonStyle="bordered"
+                action={() => {
+                  setSelectionMode((current) => !current);
+                  setSelectedTrackIds([]);
+                }}
+              />
+              {selectionMode ? (
+                <>
+                  <Button
+                    title="加入歌单"
+                    buttonStyle="bordered"
+                    action={async () => {
+                      const title = await Dialog.prompt({
+                        title: "加入歌单",
+                        message: "输入目标歌单名。若不存在，会新建一个自定义歌单。",
+                        placeholder: "目标歌单名",
+                        confirmLabel: "加入",
+                        cancelLabel: "取消",
+                        selectAll: true,
+                      });
+                      if (title == null) {
+                        return;
+                      }
+                      const selectedTracks = tracks.filter((track) =>
+                        selectedTrackIds.includes(track.id),
+                      );
+                      await addTracksByTitle(title, selectedTracks);
+                    }}
+                  />
+                  <Button
+                    title={hasSelectedTracks ? `删除已选 ${selectedTrackIds.length}` : "删除已选"}
+                    buttonStyle="bordered"
+                    action={() => void handleDeleteTracks(selectedTrackIds)}
+                  />
+                </>
+              ) : null}
+            </HStack>
+          ) : null}
+
           {tracks.length > 8 ? (
             <VStack alignment={"leading"} spacing={8}>
               <TextField
@@ -1008,32 +1333,76 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
           ) : (
             filteredTracks.map(({ track, index }) => {
               const isActive = currentIndex === index;
+              const isSelected = selectedTrackIds.includes(track.id);
               const duration = formatDuration(track.durationSeconds);
               const isCached = Boolean(track.localFilePath);
               const displayTitle = displayTrackTitle(track, sourceTitle);
               return (
-                <Button action={() => void playTrackAt(index)} key={track.id}>
-                  <HStack spacing={12}>
-                    <VStack alignment={"leading"} spacing={4}>
-                      <Text font={isActive ? "headline" : "body"}>
-                        {index + 1}. {displayTitle}
+                <VStack alignment={"leading"} spacing={8} key={track.id}>
+                  <Button
+                    action={() =>
+                      selectionMode
+                        ? setSelectedTrackIds((current) =>
+                            current.includes(track.id)
+                              ? current.filter((item) => item !== track.id)
+                              : [...current, track.id],
+                          )
+                        : void playTrackAt(index)
+                    }>
+                    <HStack spacing={12}>
+                      <VStack alignment={"leading"} spacing={4}>
+                        <Text font={isActive ? "headline" : "body"}>
+                          {index + 1}. {displayTitle}
+                        </Text>
+                        <Text font={"caption"} foregroundColor={"secondary"}>
+                          {track.artist}
+                          {duration ? ` · ${duration}` : ""}
+                          {isCached ? " · 已缓存" : ""}
+                          {" · "}
+                          CID {track.cid}
+                        </Text>
+                      </VStack>
+                      <Spacer />
+                      <Text
+                        font={"caption"}
+                        foregroundColor={
+                          selectionMode
+                            ? isSelected
+                              ? "systemBlue"
+                              : "secondary"
+                            : isActive
+                              ? "systemBlue"
+                              : "secondary"
+                        }>
+                        {selectionMode
+                          ? isSelected
+                            ? "已选"
+                            : "选择"
+                          : trackStatusLabel(playbackState, isActive, playLoading)}
                       </Text>
-                      <Text font={"caption"} foregroundColor={"secondary"}>
-                        {track.artist}
-                        {duration ? ` · ${duration}` : ""}
-                        {isCached ? " · 已缓存" : ""}
-                        {" · "}
-                        CID {track.cid}
-                      </Text>
-                    </VStack>
-                    <Spacer />
-                    <Text
-                      font={"caption"}
-                      foregroundColor={isActive ? "systemBlue" : "secondary"}>
-                      {trackStatusLabel(playbackState, isActive, playLoading)}
-                    </Text>
-                  </HStack>
-                </Button>
+                    </HStack>
+                  </Button>
+
+                  {!selectionMode && canManageTracks ? (
+                    <HStack spacing={8}>
+                      <Button
+                        title="改名"
+                        buttonStyle="bordered"
+                        action={() => void handleRenameTrack(track)}
+                      />
+                      <Button
+                        title="加入歌单"
+                        buttonStyle="bordered"
+                        action={() => void handleAddTrack(track)}
+                      />
+                      <Button
+                        title="删除"
+                        buttonStyle="bordered"
+                        action={() => void handleDeleteTracks([track.id])}
+                      />
+                    </HStack>
+                  ) : null}
+                </VStack>
               );
             })
           )}
