@@ -36,7 +36,7 @@ import {
   getSharedPlayer,
 } from "./player";
 import { PlaybackProgressView } from "./playbackProgressView";
-import { usePlayerProgress } from "./usePlayerProgress";
+import { usePlaybackClock, usePlayerProgress } from "./usePlayerProgress";
 import { SourceLibraryPage } from "./sourceLibraryPage";
 import {
   addTracksToPlaylist,
@@ -199,6 +199,116 @@ function formatDuration(seconds?: number) {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+type MiniPlayerSectionProps = {
+  player: ReturnType<typeof getSharedPlayer>;
+  currentTrack: Track | null;
+  sourceCover?: string;
+  sourceTitle: string;
+  ownerName: string;
+  playbackState: PlaybackUiState;
+  playbackLabel: string;
+  playbackMode: PlaybackMode;
+  modeLabel: string;
+  playbackDetail?: string;
+  onPrimaryAction: () => void | Promise<void>;
+  onPrevious: () => void | Promise<void>;
+  onNext: () => void | Promise<void>;
+  onCyclePlaybackMode: () => void;
+};
+
+function MiniPlayerSection(props: MiniPlayerSectionProps) {
+  const progress = usePlayerProgress(props.player);
+  const liveTime = usePlaybackClock(progress, 500);
+  const currentDurationSeconds =
+    progress.duration || props.currentTrack?.durationSeconds || 0;
+
+  return (
+    <VStack
+      alignment={"leading"}
+      spacing={12}
+      padding={{ horizontal: 16, vertical: 16 }}
+      background={{
+        style: {
+          light: "rgba(239, 246, 255, 0.94)",
+          dark: "rgba(37, 99, 235, 0.13)",
+        },
+        shape: {
+          type: "rect",
+          cornerRadius: 24,
+          style: "continuous",
+        },
+      }}
+      listRowSeparator="hidden">
+      <NavigationLink
+        destination={
+          <NowPlayingPage
+            currentTrack={props.currentTrack}
+            artworkUrl={props.currentTrack?.cover || props.sourceCover}
+            sourceTitle={props.sourceTitle}
+            playbackState={props.playbackState}
+            playbackMode={props.playbackMode}
+            playbackDetail={props.playbackDetail}
+            currentIndex={props.player.getCurrentIndex()}
+            queueLength={props.player.getQueue().length}
+            onPrimaryAction={props.onPrimaryAction}
+            onPrevious={props.onPrevious}
+            onNext={props.onNext}
+            onCyclePlaybackMode={props.onCyclePlaybackMode}
+          />
+      }>
+        <HStack spacing={14}>
+          <ArtworkView
+            cover={props.currentTrack?.cover || props.sourceCover}
+            width={84}
+            height={54}
+            contentMode="fill"
+            backgroundStyle="none"
+            cornerRadius={16}
+            fallbackColor={props.playbackState === "playing" ? "systemBlue" : "systemGray3"}
+          />
+          <VStack alignment={"leading"} spacing={3}>
+            <Text font={"headline"}>
+              {displayTrackTitle(props.currentTrack, props.sourceTitle)}
+            </Text>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {props.currentTrack?.artist || props.ownerName || "Azusa"} · {props.playbackLabel}
+            </Text>
+            <Text font={"caption2"} foregroundColor={"secondary"}>
+              {props.modeLabel}
+            </Text>
+          </VStack>
+          <Spacer />
+          <Text font={"caption"} foregroundColor={"systemBlue"}>
+            打开
+          </Text>
+        </HStack>
+      </NavigationLink>
+
+      <PlaybackProgressView progress={progress} />
+      {currentDurationSeconds > 0 ? (
+        <Text font={"caption2"} foregroundColor={"secondary"}>
+          {formatDuration(liveTime)} / {formatDuration(currentDurationSeconds)}
+        </Text>
+      ) : null}
+
+      <HStack spacing={12}>
+        <TransportControls
+          compact
+          playbackState={props.playbackState}
+          onPrevious={props.onPrevious}
+          onPrimaryAction={props.onPrimaryAction}
+          onNext={props.onNext}
+        />
+        <PlaybackModeControl
+          playbackMode={props.playbackMode}
+          onCyclePlaybackMode={props.onCyclePlaybackMode}
+        />
+        <Spacer />
+      </HStack>
+    </VStack>
+  );
+}
+
 function displayTrackTitle(track: Track | null, sourceTitle: string) {
   if (!track) {
     return "还没开始播放";
@@ -336,7 +446,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [queueQuery, setQueueQuery] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
-  const progress = usePlayerProgress(player);
   const activePlaylist = useMemo(
     () =>
       playlistLibrary.find((playlist) => playlist.id === activePlaylistId) ??
@@ -989,16 +1098,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const modeLabel = playbackModeLabel(playbackMode);
   const modeHint = playbackModeHint(playbackMode);
   const cachedTrackCount = tracks.filter((track) => Boolean(track.localFilePath)).length;
-  const currentTrackDuration = formatDuration(
-    progress.duration || currentTrack?.durationSeconds,
-  );
+  const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
   const currentTrackLabel = displayTrackTitle(currentTrack, sourceTitle);
-  const currentDurationSeconds =
-    progress.duration || currentTrack?.durationSeconds || 0;
-  const currentProgressValue =
-    currentDurationSeconds > 0
-      ? Math.max(0, Math.min(progress.currentTime, currentDurationSeconds))
-      : undefined;
   const normalizedQueueQuery = queueQuery.trim().toLowerCase();
   const filteredTracks = tracks
     .map((track, index) => ({ track, index }))
@@ -1146,89 +1247,22 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         </Section>
 
         <Section header={<Text font={"caption"}>迷你播放器</Text>}>
-          <VStack
-            alignment={"leading"}
-            spacing={12}
-            padding={{ horizontal: 16, vertical: 16 }}
-            background={{
-              style: {
-                light: "rgba(239, 246, 255, 0.94)",
-                dark: "rgba(37, 99, 235, 0.13)",
-              },
-              shape: {
-                type: "rect",
-                cornerRadius: 24,
-                style: "continuous",
-              },
-            }}
-            listRowSeparator="hidden">
-            <NavigationLink
-              destination={
-                <NowPlayingPage
-                  currentTrack={currentTrack}
-                  artworkUrl={currentTrack?.cover || sourceCover}
-                  sourceTitle={sourceTitle}
-                  playbackState={playbackState}
-                  playbackMode={playbackMode}
-                  playbackDetail={playbackDetail}
-                  currentIndex={currentIndex}
-                  queueLength={tracks.length}
-                  onPrimaryAction={handlePrimaryAction}
-                  onPrevious={() => skipBy(-1)}
-                  onNext={() => skipBy(1)}
-                  onCyclePlaybackMode={cyclePlaybackMode}
-                />
-            }>
-              <HStack spacing={14}>
-                <ArtworkView
-                  cover={currentTrack?.cover || sourceCover}
-                  width={84}
-                  height={54}
-                  contentMode="fill"
-                  backgroundStyle="none"
-                  cornerRadius={16}
-                  fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
-                />
-                <VStack alignment={"leading"} spacing={3}>
-                  <Text font={"headline"}>
-                    {currentTrackLabel}
-                  </Text>
-                  <Text font={"caption"} foregroundColor={"secondary"}>
-                    {currentTrack?.artist || ownerName || "Azusa"} · {playbackLabel}
-                  </Text>
-                  <Text font={"caption2"} foregroundColor={"secondary"}>
-                    {modeLabel}
-                  </Text>
-                </VStack>
-                <Spacer />
-                <Text font={"caption"} foregroundColor={"systemBlue"}>
-                  打开
-                </Text>
-              </HStack>
-            </NavigationLink>
-
-            <PlaybackProgressView progress={progress} />
-            {currentDurationSeconds > 0 ? (
-              <Text font={"caption2"} foregroundColor={"secondary"}>
-                {formatDuration(progress.currentTime)} / {formatDuration(currentDurationSeconds)}
-              </Text>
-            ) : null}
-
-            <HStack spacing={12}>
-              <TransportControls
-                compact
-                playbackState={playbackState}
-                onPrevious={() => void skipBy(-1)}
-                onPrimaryAction={() => void handlePrimaryAction()}
-                onNext={() => void skipBy(1)}
-              />
-              <PlaybackModeControl
-                playbackMode={playbackMode}
-                onCyclePlaybackMode={cyclePlaybackMode}
-              />
-              <Spacer />
-            </HStack>
-          </VStack>
+          <MiniPlayerSection
+            player={player}
+            currentTrack={currentTrack}
+            sourceCover={sourceCover}
+            sourceTitle={sourceTitle}
+            ownerName={ownerName}
+            playbackState={playbackState}
+            playbackLabel={playbackLabel}
+            playbackMode={playbackMode}
+            modeLabel={modeLabel}
+            playbackDetail={playbackDetail}
+            onPrimaryAction={() => void handlePrimaryAction()}
+            onPrevious={() => void skipBy(-1)}
+            onNext={() => void skipBy(1)}
+            onCyclePlaybackMode={cyclePlaybackMode}
+          />
         </Section>
 
         <Section header={<Text font={"caption"}>播放队列</Text>}>

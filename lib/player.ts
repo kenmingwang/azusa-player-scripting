@@ -82,6 +82,7 @@ class AzusaScriptingPlayer {
   private progressTrackId?: string;
   private progressAnchorTime = 0;
   private progressAnchorAt = 0;
+  private shouldBePlaying = false;
 
   constructor() {
     this.setupMediaCommands();
@@ -215,6 +216,7 @@ class AzusaScriptingPlayer {
     }
 
     const loadToken = ++this.loadToken;
+    this.shouldBePlaying = true;
     this.currentIndex = index;
     this.progressTrackId = this.queue[index]?.id;
     this.progressAnchorTime = 0;
@@ -237,6 +239,7 @@ class AzusaScriptingPlayer {
 
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
+      this.shouldBePlaying = true;
       this.startProgressClock(this.readNativeCurrentTime());
       this.player!.play();
       this.emitState("playing");
@@ -246,6 +249,7 @@ class AzusaScriptingPlayer {
 
   pause() {
     if (!this.player) return;
+    this.shouldBePlaying = false;
     this.freezeProgressClock();
     this.player.pause();
     this.emitState("paused");
@@ -261,6 +265,7 @@ class AzusaScriptingPlayer {
       return;
     }
 
+    this.shouldBePlaying = true;
     this.startProgressClock();
     this.player.play();
     this.emitState("playing");
@@ -285,6 +290,7 @@ class AzusaScriptingPlayer {
 
   stop() {
     if (!this.player) return;
+    this.shouldBePlaying = false;
     this.player.stop();
     this.loadedTrackId = undefined;
     this.activeTrackId = undefined;
@@ -304,6 +310,7 @@ class AzusaScriptingPlayer {
 
   dispose() {
     this.stopTicker();
+    this.shouldBePlaying = false;
     if (this.player) {
       this.player.stop();
       this.player.dispose();
@@ -365,6 +372,26 @@ class AzusaScriptingPlayer {
 
     this.player = new AVPlayerCtor();
     this.player.onTimeControlStatusChanged = (status: any) => {
+      if (status === TimeControlStatusApi?.waitingToPlayAtSpecifiedRate) {
+        if (this.shouldBePlaying) {
+          this.emitState("loading");
+        }
+        return;
+      }
+
+      if (status === TimeControlStatusApi?.playing) {
+        this.shouldBePlaying = true;
+        this.emitState("playing");
+        return;
+      }
+
+      if (status === TimeControlStatusApi?.paused) {
+        if (!this.shouldBePlaying) {
+          this.emitState("paused");
+        }
+        return;
+      }
+
       this.emitState(mapStatus(status));
     };
 

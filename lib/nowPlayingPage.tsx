@@ -64,7 +64,7 @@ function displayTrackTitle(track: Track | null, sourceTitle: string) {
 export function NowPlayingPage(props: NowPlayingPageProps) {
   const player = getSharedPlayer();
   const progress = usePlayerProgress(player);
-  const liveTime = usePlaybackClock(progress, 500);
+  const liveTime = usePlaybackClock(progress, 800);
 
   const duration = progress.duration || props.currentTrack?.durationSeconds || 0;
   const progressText = `${formatDuration(liveTime)} / ${formatDuration(duration)}`;

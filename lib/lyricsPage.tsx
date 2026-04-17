@@ -167,7 +167,7 @@ export function LyricsPage(props: LyricsPageProps) {
 
   const parsedLyrics = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
   const offsetMs = lyricsEntry?.offsetMs ?? 0;
-  const liveTime = usePlaybackClock(progress, 180);
+  const liveTime = usePlaybackClock(progress, 360);
   const effectiveCurrentTime = useMemo(() => {
     return Math.max(0, liveTime + offsetMs / 1000);
   }, [liveTime, offsetMs]);
@@ -496,32 +496,6 @@ export function LyricsPage(props: LyricsPageProps) {
         </Section>
       ) : null}
 
-      {parsedLyrics.lines.length ? (
-        <Section header={<Text font={"caption"}>全部歌词片段</Text>}>
-          {visibleLines.map(({ line, index }) => {
-            const isActive = activeIndex === index;
-            return (
-              <VStack
-                alignment={"leading"}
-                spacing={3}
-                key={line.id}>
-                {parsedLyrics.timed && typeof line.timeSeconds === "number" ? (
-                  <Text
-                    font={"caption"}
-                    foregroundColor={isActive ? "systemBlue" : "secondary"}>
-                    {formatTime(line.timeSeconds)}
-                  </Text>
-                ) : null}
-                <Text
-                  font={isActive ? "headline" : "body"}
-                  foregroundColor={isActive ? "systemBlue" : undefined}>
-                  {line.text}
-                </Text>
-              </VStack>
-            );
-          })}
-        </Section>
-      ) : null}
     </List>
   );
 }
