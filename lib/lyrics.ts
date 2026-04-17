@@ -8,6 +8,7 @@ export type ParsedLyrics = {
   raw: string;
   lines: LyricLine[];
   timed: boolean;
+  offsetMs: number;
 };
 
 function parseTimestampToken(token: string) {
@@ -27,6 +28,18 @@ function parseTimestampToken(token: string) {
   return minutes * 60 + seconds + fraction;
 }
 
+function parseMetadataLine(line: string) {
+  const matched = line.match(/^\[([a-zA-Z]+):(.*)\]$/);
+  if (!matched) {
+    return null;
+  }
+
+  return {
+    key: String(matched[1] ?? "").trim().toLowerCase(),
+    value: String(matched[2] ?? "").trim(),
+  };
+}
+
 export function parseLyrics(raw: string): ParsedLyrics {
   const normalized = raw.replace(/\r\n?/g, "\n").trim();
   if (!normalized) {
@@ -34,16 +47,45 @@ export function parseLyrics(raw: string): ParsedLyrics {
       raw: "",
       lines: [],
       timed: false,
+      offsetMs: 0,
     };
   }
 
   const lines: LyricLine[] = [];
   let hasTimestamp = false;
+  let offsetMs = 0;
 
   normalized.split("\n").forEach((sourceLine, lineIndex) => {
     const line = sourceLine.trim();
     if (!line) {
       return;
+    }
+
+    const metadata = parseMetadataLine(line);
+    if (metadata) {
+      if (metadata.key === "offset") {
+        const parsedOffset = Number(metadata.value);
+        if (Number.isFinite(parsedOffset)) {
+          offsetMs = parsedOffset;
+        }
+      }
+
+      if (
+        [
+          "ti",
+          "ar",
+          "al",
+          "by",
+          "offset",
+          "kana",
+          "language",
+          "lang",
+          "re",
+          "ve",
+        ].includes(metadata.key)
+      ) {
+        return;
+      }
     }
 
     const matches = [...line.matchAll(/\[(\d{1,2}:\d{1,2}(?:[.:]\d{1,3})?)\]/g)];
@@ -85,6 +127,7 @@ export function parseLyrics(raw: string): ParsedLyrics {
     raw: normalized,
     lines: sortedLines,
     timed: hasTimestamp,
+    offsetMs,
   };
 }
 
@@ -103,7 +146,9 @@ export function activeLyricLineIndex(
       continue;
     }
 
-    if (line.timeSeconds <= currentTimeSeconds + 0.15) {
+    const effectiveLineTime = line.timeSeconds + lyrics.offsetMs / 1000;
+
+    if (effectiveLineTime <= currentTimeSeconds + 0.15) {
       activeIndex = index;
       continue;
     }
