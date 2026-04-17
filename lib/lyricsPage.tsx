@@ -36,6 +36,13 @@ type LyricsPageProps = {
   track: Track | null;
 };
 
+type LiveLyricsPanelProps = {
+  player: ReturnType<typeof getSharedPlayer>;
+  track: Track | null;
+  rawLyrics: string;
+  lyricsEntry: TrackLyricsEntry | null;
+};
+
 function formatTime(seconds: number) {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
@@ -64,10 +71,134 @@ function defaultSearchKey(track: Track | null) {
   return extractSongName(displayTrackTitle(track)).trim();
 }
 
+function LiveLyricsPanel(props: LiveLyricsPanelProps) {
+  const progress = usePlayerProgress(props.player);
+  const parsedLyrics = useMemo(() => parseLyrics(props.rawLyrics), [props.rawLyrics]);
+  const offsetMs = props.lyricsEntry?.offsetMs ?? 0;
+  const liveTime = usePlaybackClock(progress, 420);
+  const effectiveCurrentTime = useMemo(() => {
+    return Math.max(0, liveTime + offsetMs / 1000);
+  }, [liveTime, offsetMs]);
+  const activeIndex = useMemo(
+    () => activeLyricLineIndex(parsedLyrics, effectiveCurrentTime),
+    [parsedLyrics, effectiveCurrentTime],
+  );
+  const visibleLines = useMemo(() => {
+    if (!parsedLyrics.lines.length) {
+      return [] as Array<{ line: (typeof parsedLyrics.lines)[number]; index: number }>;
+    }
+
+    if (!parsedLyrics.timed || activeIndex < 0) {
+      return parsedLyrics.lines
+        .slice(0, 7)
+        .map((line, index) => ({ line, index }));
+    }
+
+    const start = Math.max(0, activeIndex - 3);
+    const end = Math.min(parsedLyrics.lines.length, activeIndex + 4);
+    return parsedLyrics.lines
+      .slice(start, end)
+      .map((line, offset) => ({ line, index: start + offset }));
+  }, [parsedLyrics, activeIndex]);
+
+  const focusedLyric = activeIndex >= 0 ? parsedLyrics.lines[activeIndex] ?? null : null;
+  const lyricStatus = parsedLyrics.lines.length
+    ? props.lyricsEntry?.songMid
+      ? "在线歌词"
+      : "本地歌词"
+    : "还没有歌词";
+
+  if (!props.track) {
+    return (
+      <VStack alignment={"leading"} spacing={6}>
+        <Text font={"body"} foregroundColor={"secondary"}>
+          先开始播放，再进入歌词页。
+        </Text>
+      </VStack>
+    );
+  }
+
+  if (!parsedLyrics.lines.length) {
+    return (
+      <VStack alignment={"leading"} spacing={8}>
+        <Text font={"title3"}>
+          {displayTrackTitle(props.track)}
+        </Text>
+        <Text font={"subheadline"} foregroundColor={"secondary"}>
+          {props.track.artist || "Azusa"}
+        </Text>
+        <PlaybackProgressView progress={progress} />
+        <HStack spacing={8}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            播放时间 {formatTime(effectiveCurrentTime)}
+          </Text>
+          <Spacer />
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            偏移 {offsetMs}ms
+          </Text>
+        </HStack>
+        <Text font={"body"}>这首歌还没有歌词。</Text>
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          现在会自动搜索 QQ 候选，也支持手动导入本地 `.lrc` / `.txt`。
+        </Text>
+      </VStack>
+    );
+  }
+
+  return (
+    <VStack alignment={"center"} spacing={10} padding={{ vertical: 8 }} listRowSeparator="hidden">
+      <VStack alignment={"leading"} spacing={6}>
+        <Text font={"title3"}>
+          {displayTrackTitle(props.track)}
+        </Text>
+        <Text font={"subheadline"} foregroundColor={"secondary"}>
+          {props.track.artist || "Azusa"}
+        </Text>
+      </VStack>
+
+      <PlaybackProgressView progress={progress} />
+      <HStack spacing={8}>
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          播放时间 {formatTime(effectiveCurrentTime)}
+        </Text>
+        <Spacer />
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          偏移 {offsetMs}ms
+        </Text>
+      </HStack>
+
+      <Text font={"caption"} foregroundColor={"secondary"}>
+        {lyricStatus}
+        {props.lyricsEntry?.selectedLabel ? ` · ${props.lyricsEntry.selectedLabel}` : ""}
+        {props.lyricsEntry?.sourceKind ? ` · ${props.lyricsEntry.sourceKind}` : ""}
+      </Text>
+
+      {visibleLines.map(({ line, index }) => {
+        const isActive = activeIndex === index;
+        const isNearActive = activeIndex >= 0 && Math.abs(activeIndex - index) <= 1;
+        return (
+          <Text
+            key={line.id}
+            font={isActive ? "largeTitle" : isNearActive ? "title3" : "body"}
+            multilineTextAlignment={"center"}
+            foregroundColor={isActive ? "systemBlue" : "secondary"}>
+            {line.text}
+          </Text>
+        );
+      })}
+
+      {focusedLyric?.timeSeconds != null ? (
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          {formatTime(focusedLyric.timeSeconds + parsedLyrics.offsetMs / 1000)}
+        </Text>
+      ) : null}
+    </VStack>
+  );
+}
+
 export function LyricsPage(props: LyricsPageProps) {
   const track = props.track;
   const player = getSharedPlayer();
-  const progress = usePlayerProgress(player);
   const [lyricsEntry, setLyricsEntry] = useState(
     (track ? loadTrackLyricsEntry(trackStorageInput(track)) : null) as
       | TrackLyricsEntry
@@ -164,34 +295,6 @@ export function LyricsPage(props: LyricsPageProps) {
       cancelled = true;
     };
   }, [track?.id, searchKey, searchNonce, autoApplyAllowed]);
-
-  const parsedLyrics = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
-  const offsetMs = lyricsEntry?.offsetMs ?? 0;
-  const liveTime = usePlaybackClock(progress, 360);
-  const effectiveCurrentTime = useMemo(() => {
-    return Math.max(0, liveTime + offsetMs / 1000);
-  }, [liveTime, offsetMs]);
-  const activeIndex = useMemo(
-    () => activeLyricLineIndex(parsedLyrics, effectiveCurrentTime),
-    [parsedLyrics, effectiveCurrentTime],
-  );
-  const visibleLines = useMemo(() => {
-    if (!parsedLyrics.lines.length) {
-      return [] as Array<{ line: (typeof parsedLyrics.lines)[number]; index: number }>;
-    }
-
-    if (!parsedLyrics.timed || activeIndex < 0) {
-      return parsedLyrics.lines
-        .slice(0, 12)
-        .map((line, index) => ({ line, index }));
-    }
-
-    const start = Math.max(0, activeIndex - 4);
-    const end = Math.min(parsedLyrics.lines.length, activeIndex + 5);
-    return parsedLyrics.lines
-      .slice(start, end)
-      .map((line, offset) => ({ line, index: start + offset }));
-  }, [parsedLyrics, activeIndex]);
 
   async function applyOnlineLyrics(option: LyricSearchOption, auto = false) {
     if (!track) {
@@ -312,49 +415,22 @@ export function LyricsPage(props: LyricsPageProps) {
     setMessage(`歌词偏移已调整到 ${nextEntry.offsetMs ?? 0}ms`);
   }
 
-  const lyricStatus = parsedLyrics.lines.length
-    ? lyricsEntry?.songMid
-      ? "在线歌词"
-      : "本地歌词"
-    : "还没有歌词";
-  const focusedLyric = activeIndex >= 0 ? parsedLyrics.lines[activeIndex] ?? null : null;
-  const previousLines =
-    activeIndex >= 0
-      ? visibleLines.filter(({ index }) => index < activeIndex)
-      : visibleLines.slice(0, Math.max(0, visibleLines.length - 1));
-  const nextLines =
-    activeIndex >= 0
-      ? visibleLines.filter(({ index }) => index > activeIndex)
-      : [];
-
   return (
     <List
       navigationTitle={"歌词"}
       navigationBarTitleDisplayMode={"inline"}
       listStyle={"plain"}
     >
-      <Section header={<Text font={"caption"}>当前歌曲</Text>}>
-        <VStack alignment={"leading"} spacing={8}>
-          <Text font={"title3"}>
-            {track ? displayTrackTitle(track) : "还没有正在播放的歌曲"}
-          </Text>
-          <Text font={"subheadline"} foregroundColor={"secondary"}>
-            {track?.artist || "Azusa"}
-          </Text>
-          {track ? <PlaybackProgressView progress={progress} /> : null}
-          <HStack spacing={8}>
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              {track ? `播放时间 ${formatTime(effectiveCurrentTime)}` : "请先播放一首歌"}
-            </Text>
-            <Spacer />
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              偏移 {offsetMs}ms
-            </Text>
-          </HStack>
-        </VStack>
+      <Section header={<Text font={"caption"}>当前歌词</Text>}>
+        <LiveLyricsPanel
+          player={player}
+          track={track}
+          rawLyrics={rawLyrics}
+          lyricsEntry={lyricsEntry}
+        />
       </Section>
 
-      <Section header={<Text font={"caption"}>搜索歌词</Text>}>
+      <Section header={<Text font={"caption"}>歌词工具</Text>}>
         <VStack alignment={"leading"} spacing={10}>
           <TextField
             title="搜索关键字"
@@ -410,60 +486,6 @@ export function LyricsPage(props: LyricsPageProps) {
             正值会让歌词更早进入高亮，负值会更晚。步进固定 50ms。
           </Text>
         </VStack>
-      </Section>
-
-      <Section header={<Text font={"caption"}>当前歌词</Text>}>
-        {!track ? (
-          <Text foregroundColor={"secondary"}>
-            先开始播放，再进入歌词页。
-          </Text>
-        ) : !parsedLyrics.lines.length ? (
-          <VStack alignment={"leading"} spacing={4}>
-            <Text font={"body"}>这首歌还没有歌词。</Text>
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              现在会自动搜索 QQ 候选，也支持手动导入本地 `.lrc` / `.txt`。
-            </Text>
-          </VStack>
-        ) : (
-          <VStack
-            alignment={"center"}
-            spacing={10}
-            padding={{ vertical: 8 }}
-            listRowSeparator="hidden">
-            {previousLines.map(({ line }) => (
-              <Text
-                key={line.id}
-                font={"body"}
-                foregroundColor={"secondary"}>
-                {line.text}
-              </Text>
-            ))}
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              {lyricStatus}
-              {lyricsEntry?.selectedLabel ? ` · ${lyricsEntry.selectedLabel}` : ""}
-              {lyricsEntry?.sourceKind ? ` · ${lyricsEntry.sourceKind}` : ""}
-            </Text>
-            <Text
-              font={"largeTitle"}
-              multilineTextAlignment={"center"}
-              foregroundColor={"systemBlue"}>
-              {focusedLyric?.text || visibleLines[0]?.line.text || "…"}
-            </Text>
-            {focusedLyric?.timeSeconds != null ? (
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                {formatTime(focusedLyric.timeSeconds)}
-              </Text>
-            ) : null}
-            {nextLines.map(({ line }) => (
-              <Text
-                key={line.id}
-                font={"body"}
-                foregroundColor={"secondary"}>
-                {line.text}
-              </Text>
-            ))}
-          </VStack>
-        )}
       </Section>
 
       {message ? (
