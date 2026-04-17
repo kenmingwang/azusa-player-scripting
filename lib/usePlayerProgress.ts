@@ -21,7 +21,6 @@ type ProgressSource = {
 
 export function usePlayerProgress(
   player: ProgressSource,
-  intervalMs = 250,
 ): PlaybackProgressSnapshot {
   const [progress, setProgress] = useState(player.getProgressSnapshot());
 
@@ -32,13 +31,37 @@ export function usePlayerProgress(
     });
   }, [player]);
 
+  return progress;
+}
+
+export function liveCurrentTime(
+  progress: PlaybackProgressSnapshot,
+  nowMs = Date.now(),
+) {
+  if (progress.isRunning && typeof progress.timerFrom === "number") {
+    return Math.max(0, (nowMs - progress.timerFrom) / 1000);
+  }
+
+  return Math.max(0, progress.currentTime || 0);
+}
+
+export function usePlaybackClock(
+  progress: PlaybackProgressSnapshot,
+  intervalMs = 200,
+) {
+  const [now, setNow] = useState(Date.now());
+
   useEffect(() => {
-    if (!setIntervalApi) {
+    if (
+      !setIntervalApi ||
+      !progress.isRunning ||
+      typeof progress.timerFrom !== "number"
+    ) {
       return;
     }
 
     const sync = () => {
-      setProgress(player.getProgressSnapshot());
+      setNow(Date.now());
     };
 
     sync();
@@ -49,7 +72,7 @@ export function usePlayerProgress(
         clearIntervalApi(timer);
       }
     };
-  }, [player, intervalMs]);
+  }, [progress.isRunning, progress.timerFrom, intervalMs]);
 
-  return progress;
+  return liveCurrentTime(progress, now);
 }

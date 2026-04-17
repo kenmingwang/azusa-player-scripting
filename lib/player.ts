@@ -162,9 +162,10 @@ class AzusaScriptingPlayer {
       duration > 0 &&
       Boolean(currentTrack?.id) &&
       this.progressTrackId === currentTrack?.id;
-    const timerFrom = shouldRunTimer
-      ? Date.now() - boundedCurrentTime * 1000
-      : undefined;
+    const timerFrom =
+      shouldRunTimer && this.progressAnchorAt > 0
+        ? this.progressAnchorAt - this.progressAnchorTime * 1000
+        : undefined;
     const timerTo =
       shouldRunTimer && typeof timerFrom === "number"
         ? timerFrom + duration * 1000
@@ -572,7 +573,7 @@ class AzusaScriptingPlayer {
         this.lastNowPlayingSecond = currentSecond;
         this.updateNowPlaying();
       }
-    }, 400) as unknown as number;
+    }, 1000) as unknown as number;
   }
 
   private stopTicker() {

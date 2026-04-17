@@ -10,7 +10,11 @@ export function PlaybackProgressView(props: PlaybackProgressViewProps) {
   const { progress } = props;
   const hiddenValueLabel = <></>;
 
-  if (progress.isRunning && progress.timerFrom && progress.timerTo) {
+  if (
+    progress.isRunning &&
+    typeof progress.timerFrom === "number" &&
+    typeof progress.timerTo === "number"
+  ) {
     return (
       <ProgressView
         timerFrom={progress.timerFrom}

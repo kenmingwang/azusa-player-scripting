@@ -29,18 +29,8 @@ import {
   saveTrackLyricsEntry,
   setTrackLyricOffset,
 } from "./storage";
-import { usePlayerProgress } from "./usePlayerProgress";
+import { usePlaybackClock, usePlayerProgress } from "./usePlayerProgress";
 import type { LyricSearchOption, Track, TrackLyricsEntry } from "./types";
-
-const globalRuntime = globalThis as any;
-const setIntervalApi =
-  typeof globalRuntime.setInterval === "function"
-    ? globalRuntime.setInterval.bind(globalRuntime)
-    : null;
-const clearIntervalApi =
-  typeof globalRuntime.clearInterval === "function"
-    ? globalRuntime.clearInterval.bind(globalRuntime)
-    : null;
 
 type LyricsPageProps = {
   track: Track | null;
@@ -92,7 +82,6 @@ export function LyricsPage(props: LyricsPageProps) {
   const [searchNonce, setSearchNonce] = useState(0);
   const [autoApplyAllowed, setAutoApplyAllowed] = useState(true);
   const [searchText, setSearchText] = useState(defaultSearchKey(track));
-  const [followTick, setFollowTick] = useState(Date.now());
 
   useEffect(() => {
     if (!track) {
@@ -114,22 +103,6 @@ export function LyricsPage(props: LyricsPageProps) {
     setMessage("");
     setAutoApplyAllowed(!nextEntry?.rawLyric);
     setSearchText(nextEntry?.searchKey ?? defaultSearchKey(track));
-  }, [track?.id]);
-
-  useEffect(() => {
-    if (!setIntervalApi || !track) {
-      return;
-    }
-
-    const timer = setIntervalApi(() => {
-      setFollowTick(Date.now());
-    }, 300) as unknown as number;
-
-    return () => {
-      if (clearIntervalApi) {
-        clearIntervalApi(timer);
-      }
-    };
   }, [track?.id]);
 
   const searchKey = searchText.trim();
@@ -194,13 +167,10 @@ export function LyricsPage(props: LyricsPageProps) {
 
   const parsedLyrics = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
   const offsetMs = lyricsEntry?.offsetMs ?? 0;
+  const liveTime = usePlaybackClock(progress, 180);
   const effectiveCurrentTime = useMemo(() => {
-    const baseTime =
-      progress.isRunning && progress.timerFrom
-        ? Math.max(0, (followTick - progress.timerFrom) / 1000)
-        : progress.currentTime;
-    return Math.max(0, baseTime + offsetMs / 1000);
-  }, [progress.currentTime, progress.isRunning, progress.timerFrom, followTick, offsetMs]);
+    return Math.max(0, liveTime + offsetMs / 1000);
+  }, [liveTime, offsetMs]);
   const activeIndex = useMemo(
     () => activeLyricLineIndex(parsedLyrics, effectiveCurrentTime),
     [parsedLyrics, effectiveCurrentTime],

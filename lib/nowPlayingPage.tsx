@@ -23,7 +23,7 @@ import {
   playbackModeLabel,
 } from "./playbackControls";
 import { loadTrackLyrics } from "./storage";
-import { usePlayerProgress } from "./usePlayerProgress";
+import { usePlaybackClock, usePlayerProgress } from "./usePlayerProgress";
 import type { PlaybackMode, PlaybackUiState, Track } from "./types";
 
 type NowPlayingPageProps = {
@@ -64,9 +64,10 @@ function displayTrackTitle(track: Track | null, sourceTitle: string) {
 export function NowPlayingPage(props: NowPlayingPageProps) {
   const player = getSharedPlayer();
   const progress = usePlayerProgress(player);
+  const liveTime = usePlaybackClock(progress, 500);
 
   const duration = progress.duration || props.currentTrack?.durationSeconds || 0;
-  const progressText = `${formatDuration(progress.currentTime)} / ${formatDuration(duration)}`;
+  const progressText = `${formatDuration(liveTime)} / ${formatDuration(duration)}`;
   const displayTitle = displayTrackTitle(props.currentTrack, props.sourceTitle);
   const rawLyrics = props.currentTrack
     ? loadTrackLyrics({
@@ -77,8 +78,8 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
     : "";
   const parsedLyrics = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
   const currentLyric = useMemo(
-    () => activeLyricLine(parsedLyrics, progress.currentTime),
-    [parsedLyrics, progress.currentTime],
+    () => activeLyricLine(parsedLyrics, liveTime),
+    [parsedLyrics, liveTime],
   );
   const lyricStatus = parsedLyrics.lines.length
     ? parsedLyrics.timed
@@ -87,7 +88,7 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
     : "还没有歌词";
   const progressValue =
     duration > 0
-      ? Math.max(0, Math.min(progress.currentTime, duration))
+      ? Math.max(0, Math.min(liveTime, duration))
       : undefined;
 
   return (
