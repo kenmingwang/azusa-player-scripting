@@ -73,7 +73,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
-const BUILD_VERSION = "0.1.6";
+const BUILD_VERSION = "0.1.7";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -326,24 +326,10 @@ type QueueManagementPageProps = {
 
 type QueueToolsPageProps = QueueManagementPageProps;
 
-function QueueToolsPage(props: QueueToolsPageProps) {
+function QueueSearchPage(props: QueueToolsPageProps) {
   const [queueQuery, setQueueQuery] = useState("");
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
   const tracks = props.tracks;
   const normalizedQueueQuery = queueQuery.trim().toLowerCase();
-  const canManageTracks = props.playlist?.kind !== "source";
-  const hasSelectedTracks = selectedTrackIds.length > 0;
-  const selectedTrackIdSet = useMemo(
-    () => new Set(selectedTrackIds),
-    [selectedTrackIds],
-  );
-
-  useEffect(() => {
-    setQueueQuery("");
-    setSelectionMode(false);
-    setSelectedTrackIds([]);
-  }, [props.playlist?.id]);
 
   const filteredTracks = useMemo(
     () =>
@@ -366,108 +352,22 @@ function QueueToolsPage(props: QueueToolsPageProps) {
 
   return (
     <ScrollView
-      navigationTitle={"队列工具"}
+      navigationTitle={"搜索队列"}
       navigationBarTitleDisplayMode={"inline"}>
       <LazyVStack
         alignment={"leading"}
         spacing={24}
         padding={{ horizontal: 16, vertical: 16 }}>
-        <VStack alignment={"leading"} spacing={10}>
-          <Text font={"title3"}>
-            {props.playlist?.title || props.sourceTitle}
-          </Text>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            共 {tracks.length} 首
-          </Text>
-        </VStack>
-
         <VStack alignment={"leading"} spacing={12}>
+          <TextField
+            title="搜索队列"
+            placeholder="按歌曲名 / 歌手 / CID 过滤"
+            value={queueQuery}
+            onChanged={setQueueQuery}
+          />
           <Text font={"caption"} foregroundColor={"secondary"}>
-            队列管理
+            当前结果 {filteredTracks.length} / {tracks.length}
           </Text>
-        {props.playlist?.kind === "search" && tracks.length > 0 ? (
-          <HStack spacing={10}>
-            <Button
-              title="另存为歌单"
-              buttonStyle="bordered"
-              action={() =>
-                void props.onHandleDuplicatePlaylistToNew(
-                  props.playlist.id,
-                  `${props.playlist.title} 收藏`,
-                )
-              }
-            />
-            <Button
-              title="整单加入歌单"
-              buttonStyle="bordered"
-              action={() =>
-                void props.onHandleAddPlaylistToTitle(
-                  props.playlist.id,
-                  props.playlist.title,
-                )
-              }
-            />
-          </HStack>
-        ) : null}
-
-        {canManageTracks && tracks.length > 0 ? (
-          <HStack spacing={10}>
-            <Button
-              title={selectionMode ? "结束选择" : "批量选择"}
-              buttonStyle="bordered"
-              action={() => {
-                setSelectionMode((current) => !current);
-                setSelectedTrackIds([]);
-              }}
-            />
-            {selectionMode ? (
-              <>
-                <Button
-                  title="加入歌单"
-                  buttonStyle="bordered"
-                  action={async () => {
-                    const title = await Dialog.prompt({
-                      title: "加入歌单",
-                      message: "输入目标歌单名。若不存在，会新建一个自定义歌单。",
-                      placeholder: "目标歌单名",
-                      confirmLabel: "加入",
-                      cancelLabel: "取消",
-                      selectAll: true,
-                    });
-                    if (title == null) {
-                      return;
-                    }
-                    const selectedTracks = tracks.filter((track) =>
-                      selectedTrackIds.includes(track.id),
-                    );
-                    await props.onAddTracksByTitle(title, selectedTracks);
-                  }}
-                />
-                <Button
-                  title={hasSelectedTracks ? `删除已选 ${selectedTrackIds.length}` : "删除已选"}
-                  buttonStyle="bordered"
-                  action={() => void props.onHandleDeleteTracks(selectedTrackIds)}
-                />
-              </>
-            ) : null}
-          </HStack>
-        ) : null}
-
-        {tracks.length > 8 ? (
-          <VStack alignment={"leading"} spacing={8}>
-            <TextField
-              title="搜索队列"
-              placeholder="按歌曲名 / 歌手 / CID 过滤"
-              value={queueQuery}
-              onChanged={setQueueQuery}
-            />
-            {normalizedQueueQuery ? (
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                当前结果 {filteredTracks.length} / {tracks.length}
-              </Text>
-            ) : null}
-          </VStack>
-        ) : null}
         </VStack>
 
         <VStack alignment={"leading"} spacing={12}>
@@ -492,23 +392,12 @@ function QueueToolsPage(props: QueueToolsPageProps) {
           <LazyVStack alignment={"leading"} spacing={12}>
           {filteredTracks.map(({ track, index }) => {
             const isActive = props.currentIndex === index;
-            const isSelected = selectedTrackIdSet.has(track.id);
-            const duration = formatDuration(track.durationSeconds);
-            const isCached = Boolean(track.localFilePath);
             const displayTitle = displayTrackTitle(track, props.sourceTitle);
 
             return (
-              <VStack alignment={"leading"} spacing={8} key={track.id}>
-                <Button
-                  action={() =>
-                    selectionMode
-                      ? setSelectedTrackIds((current) =>
-                          current.includes(track.id)
-                            ? current.filter((item) => item !== track.id)
-                            : [...current, track.id],
-                        )
-                      : void props.onPlayTrackAt(index)
-                  }>
+              <Button
+                action={() => void props.onPlayTrackAt(index)}
+                key={track.id}>
                   <HStack spacing={12}>
                     <VStack alignment={"leading"} spacing={4}>
                       <Text font={isActive ? "headline" : "body"}>
@@ -516,8 +405,6 @@ function QueueToolsPage(props: QueueToolsPageProps) {
                       </Text>
                       <Text font={"caption"} foregroundColor={"secondary"}>
                         {track.artist}
-                        {duration ? ` · ${duration}` : ""}
-                        {isCached ? " · 已缓存" : ""}
                         {" · "}
                         CID {track.cid}
                       </Text>
@@ -525,48 +412,243 @@ function QueueToolsPage(props: QueueToolsPageProps) {
                     <Spacer />
                     <Text
                       font={"caption"}
-                      foregroundColor={
-                        selectionMode
-                          ? isSelected
-                            ? "systemBlue"
-                            : "secondary"
-                          : isActive
-                            ? "systemBlue"
-                            : "secondary"
-                      }>
-                      {selectionMode
-                        ? isSelected
-                          ? "已选"
-                          : "选择"
-                        : trackStatusLabel(props.playbackState, isActive, props.playLoading)}
+                      foregroundColor={isActive ? "systemBlue" : "secondary"}>
+                      {trackStatusLabel(props.playbackState, isActive, props.playLoading)}
                     </Text>
                   </HStack>
                 </Button>
-
-                {!selectionMode && canManageTracks && isActive ? (
-                  <HStack spacing={8}>
-                    <Button
-                      title="改名"
-                      buttonStyle="bordered"
-                      action={() => void props.onHandleRenameTrack(track)}
-                    />
-                    <Button
-                      title="加入歌单"
-                      buttonStyle="bordered"
-                      action={() => void props.onHandleAddTrack(track)}
-                    />
-                    <Button
-                      title="删除"
-                      buttonStyle="bordered"
-                      action={() => void props.onHandleDeleteTracks([track.id])}
-                    />
-                  </HStack>
-                ) : null}
-              </VStack>
             );
           })}
           </LazyVStack>
         )}
+        </VStack>
+
+        <VStack spacing={1} />
+      </LazyVStack>
+    </ScrollView>
+  );
+}
+
+function QueueBatchEditPage(props: QueueToolsPageProps) {
+  const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
+  const selectedTrackIdSet = useMemo(
+    () => new Set(selectedTrackIds),
+    [selectedTrackIds],
+  );
+  const hasSelectedTracks = selectedTrackIds.length > 0;
+
+  useEffect(() => {
+    setSelectedTrackIds([]);
+  }, [props.playlist?.id]);
+
+  return (
+    <ScrollView
+      navigationTitle={"批量操作"}
+      navigationBarTitleDisplayMode={"inline"}>
+      <LazyVStack
+        alignment={"leading"}
+        spacing={24}
+        padding={{ horizontal: 16, vertical: 16 }}>
+        <VStack alignment={"leading"} spacing={10}>
+          <Text font={"title3"}>
+            {props.playlist?.title || props.sourceTitle}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            已选 {selectedTrackIds.length} / {props.tracks.length} 首
+          </Text>
+        </VStack>
+
+        <HStack spacing={10}>
+          <Button
+            title="加入歌单"
+            buttonStyle="bordered"
+            action={async () => {
+              const title = await Dialog.prompt({
+                title: "加入歌单",
+                message: "输入目标歌单名。若不存在，会新建一个自定义歌单。",
+                placeholder: "目标歌单名",
+                confirmLabel: "加入",
+                cancelLabel: "取消",
+                selectAll: true,
+              });
+              if (title == null) {
+                return;
+              }
+              const selectedTracks = props.tracks.filter((track) =>
+                selectedTrackIdSet.has(track.id),
+              );
+              await props.onAddTracksByTitle(title, selectedTracks);
+            }}
+          />
+          <Button
+            title={hasSelectedTracks ? `删除已选 ${selectedTrackIds.length}` : "删除已选"}
+            buttonStyle="bordered"
+            action={() => void props.onHandleDeleteTracks(selectedTrackIds)}
+          />
+        </HStack>
+
+        <LazyVStack alignment={"leading"} spacing={12}>
+          {props.tracks.map((track, index) => {
+            const isActive = props.currentIndex === index;
+            const isSelected = selectedTrackIdSet.has(track.id);
+            const displayTitle = displayTrackTitle(track, props.sourceTitle);
+
+            return (
+              <Button
+                key={track.id}
+                action={() =>
+                  setSelectedTrackIds((current) =>
+                    current.includes(track.id)
+                      ? current.filter((item) => item !== track.id)
+                      : [...current, track.id],
+                  )
+                }>
+                <HStack spacing={12}>
+                  <VStack alignment={"leading"} spacing={4}>
+                    <Text font={isActive ? "headline" : "body"}>
+                      {index + 1}. {displayTitle}
+                    </Text>
+                    <Text font={"caption"} foregroundColor={"secondary"}>
+                      {track.artist} · CID {track.cid}
+                    </Text>
+                  </VStack>
+                  <Spacer />
+                  <Text
+                    font={"caption"}
+                    foregroundColor={isSelected ? "systemBlue" : "secondary"}>
+                    {isSelected ? "已选" : "选择"}
+                  </Text>
+                </HStack>
+              </Button>
+            );
+          })}
+        </LazyVStack>
+
+        <VStack spacing={1} />
+      </LazyVStack>
+    </ScrollView>
+  );
+}
+
+function QueueToolsPage(props: QueueToolsPageProps) {
+  const canManageTracks = props.playlist?.kind !== "source";
+
+  return (
+    <ScrollView
+      navigationTitle={"队列工具"}
+      navigationBarTitleDisplayMode={"inline"}>
+      <LazyVStack
+        alignment={"leading"}
+        spacing={24}
+        padding={{ horizontal: 16, vertical: 16 }}>
+        <VStack alignment={"leading"} spacing={10}>
+          <Text font={"title3"}>
+            {props.playlist?.title || props.sourceTitle}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            共 {props.tracks.length} 首
+          </Text>
+        </VStack>
+
+        {props.playlist?.kind === "search" && props.tracks.length > 0 ? (
+          <VStack alignment={"leading"} spacing={10}>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              歌单操作
+            </Text>
+            <HStack spacing={10}>
+              <Button
+                title="另存为歌单"
+                buttonStyle="bordered"
+                action={() =>
+                  void props.onHandleDuplicatePlaylistToNew(
+                    props.playlist.id,
+                    `${props.playlist.title} 收藏`,
+                  )
+                }
+              />
+              <Button
+                title="整单加入歌单"
+                buttonStyle="bordered"
+                action={() =>
+                  void props.onHandleAddPlaylistToTitle(
+                    props.playlist.id,
+                    props.playlist.title,
+                  )
+                }
+              />
+            </HStack>
+          </VStack>
+        ) : null}
+
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            工具入口
+          </Text>
+          <NavigationLink
+            destination={
+              <QueueSearchPage
+                playlist={props.playlist}
+                tracks={props.tracks}
+                sourceTitle={props.sourceTitle}
+                currentIndex={props.currentIndex}
+                playbackState={props.playbackState}
+                playLoading={props.playLoading}
+                onPlayTrackAt={props.onPlayTrackAt}
+                onHandleDuplicatePlaylistToNew={props.onHandleDuplicatePlaylistToNew}
+                onHandleAddPlaylistToTitle={props.onHandleAddPlaylistToTitle}
+                onAddTracksByTitle={props.onAddTracksByTitle}
+                onHandleDeleteTracks={props.onHandleDeleteTracks}
+                onHandleRenameTrack={props.onHandleRenameTrack}
+                onHandleAddTrack={props.onHandleAddTrack}
+              />
+            }>
+            <HStack spacing={12}>
+              <VStack alignment={"leading"} spacing={4}>
+                <Text font={"body"}>搜索队列</Text>
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  按歌曲名、歌手或 CID 快速过滤
+                </Text>
+              </VStack>
+              <Spacer />
+              <Text font={"caption"} foregroundColor={"systemBlue"}>
+                打开
+              </Text>
+            </HStack>
+          </NavigationLink>
+
+          {canManageTracks ? (
+            <NavigationLink
+              destination={
+                <QueueBatchEditPage
+                  playlist={props.playlist}
+                  tracks={props.tracks}
+                  sourceTitle={props.sourceTitle}
+                  currentIndex={props.currentIndex}
+                  playbackState={props.playbackState}
+                  playLoading={props.playLoading}
+                  onPlayTrackAt={props.onPlayTrackAt}
+                  onHandleDuplicatePlaylistToNew={props.onHandleDuplicatePlaylistToNew}
+                  onHandleAddPlaylistToTitle={props.onHandleAddPlaylistToTitle}
+                  onAddTracksByTitle={props.onAddTracksByTitle}
+                  onHandleDeleteTracks={props.onHandleDeleteTracks}
+                  onHandleRenameTrack={props.onHandleRenameTrack}
+                  onHandleAddTrack={props.onHandleAddTrack}
+                />
+              }>
+              <HStack spacing={12}>
+                <VStack alignment={"leading"} spacing={4}>
+                  <Text font={"body"}>批量操作</Text>
+                  <Text font={"caption"} foregroundColor={"secondary"}>
+                    选择多首歌后统一加入歌单或删除
+                  </Text>
+                </VStack>
+                <Spacer />
+                <Text font={"caption"} foregroundColor={"systemBlue"}>
+                  打开
+                </Text>
+              </HStack>
+            </NavigationLink>
+          ) : null}
         </VStack>
 
         <VStack spacing={1} />
@@ -640,8 +722,6 @@ function QueueManagementPage(props: QueueManagementPageProps) {
             <LazyVStack alignment={"leading"} spacing={12}>
               {tracks.map((track, index) => {
                 const isActive = props.currentIndex === index;
-                const duration = formatDuration(track.durationSeconds);
-                const isCached = Boolean(track.localFilePath);
                 const displayTitle = displayTrackTitle(track, props.sourceTitle);
 
                 return (
@@ -652,11 +732,7 @@ function QueueManagementPage(props: QueueManagementPageProps) {
                           {index + 1}. {displayTitle}
                         </Text>
                         <Text font={"caption"} foregroundColor={"secondary"}>
-                          {track.artist}
-                          {duration ? ` · ${duration}` : ""}
-                          {isCached ? " · 已缓存" : ""}
-                          {" · "}
-                          CID {track.cid}
+                          {track.artist} · CID {track.cid}
                         </Text>
                       </VStack>
                       <Spacer />
