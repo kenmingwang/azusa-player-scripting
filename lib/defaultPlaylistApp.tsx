@@ -4,9 +4,11 @@ import {
   Button,
   Dialog,
   HStack,
+  LazyVStack,
   List,
   NavigationLink,
   NavigationStack,
+  ScrollView,
   Section,
   Script,
   Spacer,
@@ -73,7 +75,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
-const BUILD_VERSION = "0.1.3";
+const BUILD_VERSION = "0.1.4";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -237,8 +239,7 @@ function MiniPlayerSection(props: MiniPlayerSectionProps) {
           cornerRadius: 24,
           style: "continuous",
         },
-      }}
-      listRowSeparator="hidden">
+      }}>
       <NavigationLink
         destination={
           <NowPlayingPage
@@ -1339,12 +1340,18 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
 
   return (
     <NavigationStack>
-      <List
+      <ScrollView
         navigationTitle={`Azusa ${BUILD_VERSION}`}
         navigationBarTitleDisplayMode={"large"}
-        listStyle={"plain"}
       >
-        <Section header={<Text font={"caption"}>当前歌单</Text>}>
+        <LazyVStack
+          alignment={"leading"}
+          spacing={24}
+          padding={{ horizontal: 16, vertical: 16 }}>
+          <VStack alignment={"leading"} spacing={12}>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              当前歌单
+            </Text>
           <VStack
             alignment={"leading"}
             spacing={14}
@@ -1359,8 +1366,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 cornerRadius: 26,
                 style: "continuous",
               },
-            }}
-            listRowSeparator="hidden">
+            }}>
             <HStack spacing={14}>
               <ArtworkView
                 cover={sourceCover || currentTrack?.cover}
@@ -1463,9 +1469,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               </VStack>
             ) : null}
           </VStack>
-        </Section>
+          </VStack>
 
-        <Section header={<Text font={"caption"}>迷你播放器</Text>}>
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            迷你播放器
+          </Text>
           <MiniPlayerSection
             player={player}
             currentTrack={currentTrack}
@@ -1482,9 +1491,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             onNext={() => void skipBy(1)}
             onCyclePlaybackMode={cyclePlaybackMode}
           />
-        </Section>
+        </VStack>
 
-        <Section header={<Text font={"caption"}>播放队列</Text>}>
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            播放队列
+          </Text>
           {tracks.length === 0 ? (
             <VStack alignment={"leading"} spacing={4}>
               <Text font={"headline"}>还没有歌单</Text>
@@ -1561,8 +1573,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
               ) : null}
             </VStack>
           )}
-        </Section>
-      </List>
+        </VStack>
+
+          <VStack spacing={1} />
+        </LazyVStack>
+      </ScrollView>
     </NavigationStack>
   );
 }
