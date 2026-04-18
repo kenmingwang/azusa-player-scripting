@@ -546,6 +546,68 @@ function dedupeTracks(existing: Track[], incoming: Track[]) {
   return next;
 }
 
+function sourceDescriptorEqual(
+  left?: SourceDescriptor,
+  right?: SourceDescriptor,
+) {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return !left && !right;
+  }
+
+  return (
+    left.kind === right.kind &&
+    left.input === right.input &&
+    left.titleHint === right.titleHint
+  );
+}
+
+function tracksEqual(left: Track[], right: Track[]) {
+  if (left === right) {
+    return true;
+  }
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    const leftTrack = left[index];
+    const rightTrack = right[index];
+    if (
+      leftTrack.id !== rightTrack.id ||
+      leftTrack.bvid !== rightTrack.bvid ||
+      leftTrack.cid !== rightTrack.cid ||
+      leftTrack.title !== rightTrack.title ||
+      leftTrack.artist !== rightTrack.artist ||
+      leftTrack.sourceTitle !== rightTrack.sourceTitle ||
+      leftTrack.cover !== rightTrack.cover ||
+      leftTrack.streamUrl !== rightTrack.streamUrl ||
+      leftTrack.localFilePath !== rightTrack.localFilePath ||
+      leftTrack.durationSeconds !== rightTrack.durationSeconds
+    ) {
+      return false;
+    }
+
+    const leftBackups = leftTrack.backupStreamUrls ?? [];
+    const rightBackups = rightTrack.backupStreamUrls ?? [];
+    if (leftBackups.length !== rightBackups.length) {
+      return false;
+    }
+
+    for (let backupIndex = 0; backupIndex < leftBackups.length; backupIndex += 1) {
+      if (leftBackups[backupIndex] !== rightBackups[backupIndex]) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 export function loadState(): PersistedState {
   const sharedState = safeGet<PersistedState>(STATE_KEY, true);
   const privateState = safeGet<PersistedState>(STATE_KEY, false);
@@ -930,25 +992,36 @@ export function persistPlayerState(input: {
 }) {
   return updateState((current) => {
     const activePlaylist = getActivePlaylist(current);
+    const nextTitle =
+      activePlaylist?.kind === "user"
+        ? activePlaylist.title
+        : input.sourceTitle ?? activePlaylist?.title;
+    const nextSource =
+      activePlaylist?.kind === "user"
+        ? undefined
+        : input.sourceDescriptor ?? activePlaylist?.source;
+    const nextOwnerName =
+      input.playbackSnapshot?.ownerName ?? activePlaylist?.ownerName;
+    const nextCover = input.playbackSnapshot?.cover ?? activePlaylist?.cover;
+    const shouldUpdateActivePlaylist =
+      Boolean(activePlaylist) &&
+      (!tracksEqual(activePlaylist?.tracks ?? [], input.queue) ||
+        (activePlaylist?.title ?? "") !== (nextTitle ?? "") ||
+        !sourceDescriptorEqual(activePlaylist?.source, nextSource) ||
+        (activePlaylist?.ownerName ?? "") !== (nextOwnerName ?? "") ||
+        (activePlaylist?.cover ?? "") !== (nextCover ?? ""));
     const nextLibrary =
-      activePlaylist
+      activePlaylist && shouldUpdateActivePlaylist
         ? updatePlaylistInLibrary(
             current.playlistLibrary,
             activePlaylist.id,
             (playlist) => ({
               ...playlist,
               tracks: [...input.queue],
-              title:
-                playlist.kind === "user"
-                  ? playlist.title
-                  : input.sourceTitle ?? playlist.title,
-              source:
-                playlist.kind === "user"
-                  ? undefined
-                  : input.sourceDescriptor ?? playlist.source,
-              ownerName:
-                input.playbackSnapshot?.ownerName ?? playlist.ownerName,
-              cover: input.playbackSnapshot?.cover ?? playlist.cover,
+              title: nextTitle ?? playlist.title,
+              source: nextSource,
+              ownerName: nextOwnerName,
+              cover: nextCover,
               updatedAt: nowIso(),
             }),
           )

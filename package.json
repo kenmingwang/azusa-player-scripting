@@ -1,7 +1,7 @@
 {
   "name": "azusa-player-scripting",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Azusa Player client prototype built for Scripting on iPhone.",
   "scripts": {
     "typecheck": "tsc -p ./tsconfig.json --pretty false",

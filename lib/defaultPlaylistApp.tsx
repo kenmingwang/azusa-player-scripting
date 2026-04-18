@@ -73,7 +73,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
-const BUILD_VERSION = "0.1.2";
+const BUILD_VERSION = "0.1.3";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -601,7 +601,7 @@ function playlistSummaryLabel(playlist: PlaylistRecord | null) {
 }
 
 export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
-  const persistedState = loadState();
+  const persistedState = useMemo(() => loadState(), []);
   const requestedInput = props.initialInput?.trim() || "";
   const requestedSource = requestedInput ? parseSourceInput(requestedInput) : null;
   const initialPlaylist =
@@ -674,6 +674,9 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [recentSources, setRecentSources] = useState(
     persistedState.recentSources ?? [],
   );
+  const [pendingCommand, setPendingCommand] = useState(
+    persistedState.pendingExternalCommand ?? null,
+  );
   const [playbackState, setPlaybackState] = useState(
     (initialSnapshot?.playbackState ?? "idle") as PlaybackUiState,
   );
@@ -716,6 +719,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     setPlaylistLibrary(nextState.playlistLibrary);
     setActivePlaylistId(nextState.activePlaylistId ?? nextState.playlistLibrary[0]?.id ?? "");
     setRecentSources(nextState.recentSources ?? []);
+    setPendingCommand(nextState.pendingExternalCommand ?? null);
   }
 
   function applyPlaylistToPlayer(
@@ -1307,7 +1311,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const visibleRecentSources = recentSources.filter(
     (source) => source.input !== playbackSource.input,
   );
-  const pendingCommand = loadState().pendingExternalCommand;
   const keepAliveLabel = keepAliveStateLabel(scenePhase, keepAliveState as any);
   const modeLabel = playbackModeLabel(playbackMode);
   const modeHint = playbackModeHint(playbackMode);
