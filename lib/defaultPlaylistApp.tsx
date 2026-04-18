@@ -5,11 +5,9 @@ import {
   Dialog,
   HStack,
   LazyVStack,
-  List,
   NavigationLink,
   NavigationStack,
   ScrollView,
-  Section,
   Script,
   Spacer,
   Text,
@@ -75,7 +73,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
-const BUILD_VERSION = "0.1.4";
+const BUILD_VERSION = "0.1.5";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -334,6 +332,10 @@ function QueueManagementPage(props: QueueManagementPageProps) {
   const normalizedQueueQuery = queueQuery.trim().toLowerCase();
   const canManageTracks = props.playlist?.kind !== "source";
   const hasSelectedTracks = selectedTrackIds.length > 0;
+  const selectedTrackIdSet = useMemo(
+    () => new Set(selectedTrackIds),
+    [selectedTrackIds],
+  );
 
   useEffect(() => {
     setQueueQuery("");
@@ -361,11 +363,13 @@ function QueueManagementPage(props: QueueManagementPageProps) {
   );
 
   return (
-    <List
+    <ScrollView
       navigationTitle={"播放队列"}
-      navigationBarTitleDisplayMode={"inline"}
-      listStyle={"plain"}>
-      <Section>
+      navigationBarTitleDisplayMode={"inline"}>
+      <LazyVStack
+        alignment={"leading"}
+        spacing={24}
+        padding={{ horizontal: 16, vertical: 16 }}>
         <VStack alignment={"leading"} spacing={10}>
           <Text font={"title3"}>
             {props.playlist?.title || props.sourceTitle}
@@ -374,9 +378,11 @@ function QueueManagementPage(props: QueueManagementPageProps) {
             共 {tracks.length} 首
           </Text>
         </VStack>
-      </Section>
 
-      <Section header={<Text font={"caption"}>队列管理</Text>}>
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            队列管理
+          </Text>
         {props.playlist?.kind === "search" && tracks.length > 0 ? (
           <HStack spacing={10}>
             <Button
@@ -460,9 +466,12 @@ function QueueManagementPage(props: QueueManagementPageProps) {
             ) : null}
           </VStack>
         ) : null}
-      </Section>
+        </VStack>
 
-      <Section header={<Text font={"caption"}>歌曲列表</Text>}>
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            歌曲列表
+          </Text>
         {tracks.length === 0 ? (
           <VStack alignment={"leading"} spacing={4}>
             <Text font={"headline"}>还没有歌单</Text>
@@ -478,9 +487,10 @@ function QueueManagementPage(props: QueueManagementPageProps) {
             </Text>
           </VStack>
         ) : (
-          filteredTracks.map(({ track, index }) => {
+          <LazyVStack alignment={"leading"} spacing={12}>
+          {filteredTracks.map(({ track, index }) => {
             const isActive = props.currentIndex === index;
-            const isSelected = selectedTrackIds.includes(track.id);
+            const isSelected = selectedTrackIdSet.has(track.id);
             const duration = formatDuration(track.durationSeconds);
             const isCached = Boolean(track.localFilePath);
             const displayTitle = displayTrackTitle(track, props.sourceTitle);
@@ -552,10 +562,14 @@ function QueueManagementPage(props: QueueManagementPageProps) {
                 ) : null}
               </VStack>
             );
-          })
+          })}
+          </LazyVStack>
         )}
-      </Section>
-    </List>
+        </VStack>
+
+        <VStack spacing={1} />
+      </LazyVStack>
+    </ScrollView>
   );
 }
 
