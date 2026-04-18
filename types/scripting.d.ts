@@ -33,6 +33,8 @@ declare module "scripting" {
   export const ZStack: any;
   export const Spacer: any;
   export const Path: any;
+  export const ScrollView: any;
+  export const LazyVStack: any;
   export const FileManager: any;
   export const Storage: any;
   export const BackgroundURLSession: any;

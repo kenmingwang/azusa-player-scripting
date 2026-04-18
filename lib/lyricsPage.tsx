@@ -4,8 +4,8 @@ import {
   DocumentPicker,
   FileManager,
   HStack,
-  List,
-  Section,
+  LazyVStack,
+  ScrollView,
   Spacer,
   Text,
   TextField,
@@ -146,7 +146,7 @@ function LiveLyricsPanel(props: LiveLyricsPanelProps) {
   }
 
   return (
-    <VStack alignment={"center"} spacing={10} padding={{ vertical: 8 }} listRowSeparator="hidden">
+    <VStack alignment={"center"} spacing={10} padding={{ vertical: 8 }}>
       <VStack alignment={"leading"} spacing={6}>
         <Text font={"title3"}>
           {displayTrackTitle(props.track)}
@@ -416,108 +416,128 @@ export function LyricsPage(props: LyricsPageProps) {
   }
 
   return (
-    <List
+    <ScrollView
       navigationTitle={"歌词"}
       navigationBarTitleDisplayMode={"inline"}
-      listStyle={"plain"}
-    >
-      <Section header={<Text font={"caption"}>当前歌词</Text>}>
-        <LiveLyricsPanel
-          player={player}
-          track={track}
-          rawLyrics={rawLyrics}
-          lyricsEntry={lyricsEntry}
-        />
-      </Section>
-
-      <Section header={<Text font={"caption"}>歌词工具</Text>}>
-        <VStack alignment={"leading"} spacing={10}>
-          <TextField
-            title="搜索关键字"
-            placeholder="手动输入歌名重新搜词"
-            value={searchText}
-            onChanged={setSearchText}
+      scrollDismissesKeyboard={"interactively"}>
+      <LazyVStack
+        alignment={"leading"}
+        spacing={24}
+        padding={{ horizontal: 16, vertical: 16 }}>
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            当前歌词
+          </Text>
+          <LiveLyricsPanel
+            player={player}
+            track={track}
+            rawLyrics={rawLyrics}
+            lyricsEntry={lyricsEntry}
           />
-          <HStack spacing={10}>
-            <Button
-              title={searching ? "搜索中..." : "重新搜索"}
-              buttonStyle="borderedProminent"
-              action={() => {
-                setAutoApplyAllowed(false);
-                setSearchNonce((current) => current + 1);
-              }}
+        </VStack>
+
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            歌词工具
+          </Text>
+          <VStack alignment={"leading"} spacing={10}>
+            <TextField
+              title="搜索关键字"
+              placeholder="手动输入歌名重新搜词"
+              value={searchText}
+              onChanged={setSearchText}
             />
-            <Button
-              title={busy ? "处理中..." : "导入 LRC / TXT"}
-              buttonStyle="bordered"
-              action={() => void importLyricsFile()}
-            />
-            {rawLyrics ? (
+            <HStack spacing={10}>
               <Button
-                title="清除"
-                buttonStyle="bordered"
-                action={() => void clearLyrics()}
+                title={searching ? "搜索中..." : "重新搜索"}
+                buttonStyle="borderedProminent"
+                action={() => {
+                  setAutoApplyAllowed(false);
+                  setSearchNonce((current) => current + 1);
+                }}
               />
-            ) : null}
-          </HStack>
-        </VStack>
-      </Section>
-
-      <Section header={<Text font={"caption"}>歌词偏移</Text>}>
-        <VStack alignment={"leading"} spacing={10}>
-          <HStack spacing={10}>
-            <Button
-              title="-50ms"
-              buttonStyle="bordered"
-              action={() => adjustOffset(-50)}
-            />
-            <Button
-              title="归零"
-              buttonStyle="bordered"
-              action={() => adjustOffset(-(lyricsEntry?.offsetMs ?? 0))}
-            />
-            <Button
-              title="+50ms"
-              buttonStyle="bordered"
-              action={() => adjustOffset(50)}
-            />
-          </HStack>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            正值会让歌词更早进入高亮，负值会更晚。步进固定 50ms。
-          </Text>
-        </VStack>
-      </Section>
-
-      {message ? (
-        <Section header={<Text font={"caption"}>状态</Text>}>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            {message}
-          </Text>
-        </Section>
-      ) : null}
-
-      {track ? (
-        <Section header={<Text font={"caption"}>歌词候选</Text>}>
-          {!options.length ? (
-            <Text foregroundColor={"secondary"}>
-              {searching ? "正在搜索歌词候选..." : "还没有找到可用候选。"}
-            </Text>
-          ) : (
-            options.map((option) => {
-              const isSelected = selectedSongMid === option.songMid;
-              return (
+              <Button
+                title={busy ? "处理中..." : "导入 LRC / TXT"}
+                buttonStyle="bordered"
+                action={() => void importLyricsFile()}
+              />
+              {rawLyrics ? (
                 <Button
-                  key={option.songMid}
-                  buttonStyle={isSelected ? "borderedProminent" : "bordered"}
-                  title={isSelected ? `使用中 · ${option.label}` : option.label}
-                  action={() => void applyOnlineLyrics(option)}
+                  title="清除"
+                  buttonStyle="bordered"
+                  action={() => void clearLyrics()}
                 />
-              );
-            })
-          )}
-        </Section>
-      ) : null}
+              ) : null}
+            </HStack>
+          </VStack>
+        </VStack>
 
-    </List>
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            歌词偏移
+          </Text>
+          <VStack alignment={"leading"} spacing={10}>
+            <HStack spacing={10}>
+              <Button
+                title="-50ms"
+                buttonStyle="bordered"
+                action={() => adjustOffset(-50)}
+              />
+              <Button
+                title="归零"
+                buttonStyle="bordered"
+                action={() => adjustOffset(-(lyricsEntry?.offsetMs ?? 0))}
+              />
+              <Button
+                title="+50ms"
+                buttonStyle="bordered"
+                action={() => adjustOffset(50)}
+              />
+            </HStack>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              正值会让歌词更早进入高亮，负值会更晚。步进固定 50ms。
+            </Text>
+          </VStack>
+        </VStack>
+
+        {message ? (
+          <VStack alignment={"leading"} spacing={12}>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              状态
+            </Text>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {message}
+            </Text>
+          </VStack>
+        ) : null}
+
+        {track ? (
+          <VStack alignment={"leading"} spacing={12}>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              歌词候选
+            </Text>
+            {!options.length ? (
+              <Text foregroundColor={"secondary"}>
+                {searching ? "正在搜索歌词候选..." : "还没有找到可用候选。"}
+              </Text>
+            ) : (
+              options.map((option) => {
+                const isSelected = selectedSongMid === option.songMid;
+                return (
+                  <Button
+                    key={option.songMid}
+                    buttonStyle={isSelected ? "borderedProminent" : "bordered"}
+                    title={isSelected ? `使用中 · ${option.label}` : option.label}
+                    action={() => void applyOnlineLyrics(option)}
+                  />
+                );
+              })
+            )}
+          </VStack>
+        ) : null}
+
+        <VStack spacing={1} />
+      </LazyVStack>
+    </ScrollView>
   );
 }
