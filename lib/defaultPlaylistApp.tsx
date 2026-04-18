@@ -74,6 +74,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
+const BUILD_VERSION = "9fbf027";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -1121,7 +1122,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   return (
     <NavigationStack>
       <List
-        navigationTitle={"Azusa"}
+        navigationTitle={`Azusa ${BUILD_VERSION}`}
         navigationBarTitleDisplayMode={"large"}
         listStyle={"plain"}
       >
