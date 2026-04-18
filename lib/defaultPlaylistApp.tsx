@@ -74,7 +74,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
-const BUILD_VERSION = "9fbf027";
+const BUILD_VERSION = "0.1.1";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -959,22 +959,15 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       return;
     }
 
-    const nextState = setPlaylistTableState(activePlaylistId, {
-      filterText: queueQuery,
-    });
-    setPlaylistLibrary(nextState.playlistLibrary);
-  }, [activePlaylistId, queueQuery]);
-
-  useEffect(() => {
-    if (!activePlaylistId || !currentTrack?.id) {
+    if ((activePlaylist?.tableState?.filterText ?? "") === queueQuery) {
       return;
     }
 
     const nextState = setPlaylistTableState(activePlaylistId, {
-      highlightedTrackId: currentTrack.id,
+      filterText: queueQuery,
     });
     setPlaylistLibrary(nextState.playlistLibrary);
-  }, [activePlaylistId, currentTrack?.id]);
+  }, [activePlaylistId, activePlaylist?.tableState?.filterText, queueQuery]);
 
   const playbackSnapshot = useMemo(
     () =>
@@ -1098,24 +1091,31 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const keepAliveLabel = keepAliveStateLabel(scenePhase, keepAliveState as any);
   const modeLabel = playbackModeLabel(playbackMode);
   const modeHint = playbackModeHint(playbackMode);
-  const cachedTrackCount = tracks.filter((track) => Boolean(track.localFilePath)).length;
+  const cachedTrackCount = useMemo(
+    () => tracks.filter((track) => Boolean(track.localFilePath)).length,
+    [tracks],
+  );
   const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
   const currentTrackLabel = displayTrackTitle(currentTrack, sourceTitle);
   const normalizedQueueQuery = queueQuery.trim().toLowerCase();
-  const filteredTracks = tracks
-    .map((track, index) => ({ track, index }))
-    .filter(({ track }) => {
-      if (!normalizedQueueQuery) {
-        return true;
-      }
+  const filteredTracks = useMemo(
+    () =>
+      tracks
+        .map((track, index) => ({ track, index }))
+        .filter(({ track }) => {
+          if (!normalizedQueueQuery) {
+            return true;
+          }
 
-      return [
-        track.title,
-        track.artist,
-        track.sourceTitle,
-        track.cid,
-      ].some((value) => value.toLowerCase().includes(normalizedQueueQuery));
-    });
+          return [
+            track.title,
+            track.artist,
+            track.sourceTitle,
+            track.cid,
+          ].some((value) => value.toLowerCase().includes(normalizedQueueQuery));
+        }),
+    [tracks, normalizedQueueQuery],
+  );
   const canManageTracks = activePlaylist?.kind !== "source";
   const hasSelectedTracks = selectedTrackIds.length > 0;
 
@@ -1418,7 +1418,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                     </HStack>
                   </Button>
 
-                  {!selectionMode && canManageTracks ? (
+                  {!selectionMode && canManageTracks && isActive ? (
                     <HStack spacing={8}>
                       <Button
                         title="改名"
