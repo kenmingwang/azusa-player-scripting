@@ -172,14 +172,14 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
           </Text>
           <Text font={currentLyric ? "title3" : "body"}>
             {currentLyric?.text ||
-              "进入歌词页后会自动搜索 QQ 歌词，也支持导入 `.lrc` / `.txt`。"}
+              "进入歌词页后查看跟随歌词，再从工具页搜索 QQ 候选或导入 `.lrc` / `.txt`。"}
           </Text>
           <NavigationLink destination={<LyricsPage track={props.currentTrack} />}>
             <HStack spacing={12}>
               <VStack alignment={"leading"} spacing={3}>
                 <Text font={"body"}>打开歌词页</Text>
                 <Text font={"caption"} foregroundColor={"secondary"}>
-                  搜索歌词候选、导入本地歌词、查看同步高亮
+                  查看跟随歌词，并进入工具页调整歌词来源和偏移
                 </Text>
               </VStack>
               <Text font={"caption"} foregroundColor={"systemBlue"}>

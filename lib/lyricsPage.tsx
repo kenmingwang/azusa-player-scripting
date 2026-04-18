@@ -5,6 +5,7 @@ import {
   FileManager,
   HStack,
   LazyVStack,
+  NavigationLink,
   ScrollView,
   Spacer,
   Text,
@@ -15,7 +16,11 @@ import {
   useState,
 } from "scripting";
 
-import { activeLyricLineIndex, parseLyrics } from "./lyrics";
+import {
+  activeLyricLine,
+  activeLyricLineIndex,
+  parseLyrics,
+} from "./lyrics";
 import {
   extractSongName,
   fetchLyricBySongMid,
@@ -36,12 +41,25 @@ type LyricsPageProps = {
   track: Track | null;
 };
 
-type LiveLyricsPanelProps = {
+type LyricsFollowPageProps = {
   player: ReturnType<typeof getSharedPlayer>;
   track: Track | null;
   rawLyrics: string;
   lyricsEntry: TrackLyricsEntry | null;
+  onLyricsEntryChange: (entry: TrackLyricsEntry | null) => void;
+  onRawLyricsChange: (raw: string) => void;
 };
+
+type LyricsToolsPageProps = {
+  player: ReturnType<typeof getSharedPlayer>;
+  track: Track | null;
+  rawLyrics: string;
+  lyricsEntry: TrackLyricsEntry | null;
+  onLyricsEntryChange: (entry: TrackLyricsEntry | null) => void;
+  onRawLyricsChange: (raw: string) => void;
+};
+
+const LYRIC_SLOT_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const;
 
 function formatTime(seconds: number) {
   const mins = Math.floor(seconds / 60);
@@ -71,181 +89,257 @@ function defaultSearchKey(track: Track | null) {
   return extractSongName(displayTrackTitle(track)).trim();
 }
 
-function LiveLyricsPanel(props: LiveLyricsPanelProps) {
+function lyricSourceLabel(entry: TrackLyricsEntry | null, hasLyrics: boolean) {
+  if (!hasLyrics) {
+    return "还没有歌词";
+  }
+
+  if (entry?.songMid) {
+    return "在线歌词";
+  }
+
+  return "本地歌词";
+}
+
+function LyricsFollowPage(props: LyricsFollowPageProps) {
   const progress = usePlayerProgress(props.player);
   const parsedLyrics = useMemo(() => parseLyrics(props.rawLyrics), [props.rawLyrics]);
   const offsetMs = props.lyricsEntry?.offsetMs ?? 0;
   const liveTime = usePlaybackClock(progress, 420);
-  const effectiveCurrentTime = useMemo(() => {
-    return Math.max(0, liveTime + offsetMs / 1000);
-  }, [liveTime, offsetMs]);
+  const effectiveCurrentTime = useMemo(
+    () => Math.max(0, liveTime + offsetMs / 1000),
+    [liveTime, offsetMs],
+  );
   const activeIndex = useMemo(
     () => activeLyricLineIndex(parsedLyrics, effectiveCurrentTime),
     [parsedLyrics, effectiveCurrentTime],
   );
-  const visibleLines = useMemo(() => {
-    if (!parsedLyrics.lines.length) {
-      return [] as Array<{ line: (typeof parsedLyrics.lines)[number]; index: number }>;
-    }
-
-    if (!parsedLyrics.timed || activeIndex < 0) {
-      return parsedLyrics.lines
-        .slice(0, 7)
-        .map((line, index) => ({ line, index }));
-    }
-
-    const start = Math.max(0, activeIndex - 3);
-    const end = Math.min(parsedLyrics.lines.length, activeIndex + 4);
-    return parsedLyrics.lines
-      .slice(start, end)
-      .map((line, offset) => ({ line, index: start + offset }));
-  }, [parsedLyrics, activeIndex]);
-
+  const anchorIndex = activeIndex >= 0 ? activeIndex : 0;
+  const lyricStatus = lyricSourceLabel(props.lyricsEntry, parsedLyrics.lines.length > 0);
   const focusedLyric = activeIndex >= 0 ? parsedLyrics.lines[activeIndex] ?? null : null;
-  const lyricStatus = parsedLyrics.lines.length
-    ? props.lyricsEntry?.songMid
-      ? "在线歌词"
-      : "本地歌词"
-    : "还没有歌词";
 
-  if (!props.track) {
-    return (
-      <VStack alignment={"leading"} spacing={6}>
-        <Text font={"body"} foregroundColor={"secondary"}>
-          先开始播放，再进入歌词页。
-        </Text>
-      </VStack>
-    );
-  }
+  const lyricSlots = useMemo(
+    () =>
+      LYRIC_SLOT_OFFSETS.map((offset) => {
+        const index = anchorIndex + offset;
+        const line =
+          index >= 0 && index < parsedLyrics.lines.length
+            ? parsedLyrics.lines[index]
+            : null;
 
-  if (!parsedLyrics.lines.length) {
-    return (
-      <VStack alignment={"leading"} spacing={8}>
-        <Text font={"title3"}>
-          {displayTrackTitle(props.track)}
-        </Text>
-        <Text font={"subheadline"} foregroundColor={"secondary"}>
-          {props.track.artist || "Azusa"}
-        </Text>
-        <PlaybackProgressView progress={progress} />
-        <HStack spacing={8}>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            播放时间 {formatTime(effectiveCurrentTime)}
-          </Text>
-          <Spacer />
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            偏移 {offsetMs}ms
-          </Text>
-        </HStack>
-        <Text font={"body"}>这首歌还没有歌词。</Text>
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          现在会自动搜索 QQ 候选，也支持手动导入本地 `.lrc` / `.txt`。
-        </Text>
-      </VStack>
-    );
-  }
+        return {
+          slotKey: `slot-${offset}`,
+          offset,
+          line,
+        };
+      }),
+    [anchorIndex, parsedLyrics.lines],
+  );
 
   return (
-    <VStack alignment={"center"} spacing={10} padding={{ vertical: 8 }}>
-      <VStack alignment={"leading"} spacing={6}>
-        <Text font={"title3"}>
-          {displayTrackTitle(props.track)}
-        </Text>
-        <Text font={"subheadline"} foregroundColor={"secondary"}>
-          {props.track.artist || "Azusa"}
-        </Text>
-      </VStack>
-
-      <PlaybackProgressView progress={progress} />
-      <HStack spacing={8}>
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          播放时间 {formatTime(effectiveCurrentTime)}
-        </Text>
-        <Spacer />
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          偏移 {offsetMs}ms
-        </Text>
-      </HStack>
-
-      <Text font={"caption"} foregroundColor={"secondary"}>
-        {lyricStatus}
-        {props.lyricsEntry?.selectedLabel ? ` · ${props.lyricsEntry.selectedLabel}` : ""}
-        {props.lyricsEntry?.sourceKind ? ` · ${props.lyricsEntry.sourceKind}` : ""}
-      </Text>
-
-      {visibleLines.map(({ line, index }) => {
-        const isActive = activeIndex === index;
-        const isNearActive = activeIndex >= 0 && Math.abs(activeIndex - index) <= 1;
-        return (
-          <Text
-            key={line.id}
-            font={isActive ? "largeTitle" : isNearActive ? "title3" : "body"}
-            multilineTextAlignment={"center"}
-            foregroundColor={isActive ? "systemBlue" : "secondary"}>
-            {line.text}
+    <ScrollView
+      navigationTitle={"歌词"}
+      navigationBarTitleDisplayMode={"inline"}>
+      <LazyVStack
+        alignment={"leading"}
+        spacing={24}
+        padding={{ horizontal: 16, vertical: 16 }}>
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            当前歌词
           </Text>
-        );
-      })}
+          {!props.track ? (
+            <Text font={"body"} foregroundColor={"secondary"}>
+              先开始播放，再进入歌词页。
+            </Text>
+          ) : (
+            <VStack alignment={"leading"} spacing={10}>
+              <Text font={"title3"}>
+                {displayTrackTitle(props.track)}
+              </Text>
+              <Text font={"subheadline"} foregroundColor={"secondary"}>
+                {props.track.artist || "Azusa"}
+              </Text>
+              <PlaybackProgressView progress={progress} />
+              <HStack spacing={8}>
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  播放时间 {formatTime(effectiveCurrentTime)}
+                </Text>
+                <Spacer />
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  偏移 {offsetMs}ms
+                </Text>
+              </HStack>
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                {lyricStatus}
+                {props.lyricsEntry?.selectedLabel
+                  ? ` · ${props.lyricsEntry.selectedLabel}`
+                  : ""}
+                {props.lyricsEntry?.sourceKind
+                  ? ` · ${props.lyricsEntry.sourceKind}`
+                  : ""}
+              </Text>
+            </VStack>
+          )}
+        </VStack>
 
-      {focusedLyric?.timeSeconds != null ? (
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          {formatTime(focusedLyric.timeSeconds + parsedLyrics.offsetMs / 1000)}
-        </Text>
-      ) : null}
-    </VStack>
+        <VStack
+          alignment={"center"}
+          spacing={12}
+          padding={{ vertical: 8 }}>
+          {!props.track ? null : !parsedLyrics.lines.length ? (
+            <VStack alignment={"center"} spacing={10}>
+              <Text font={"body"}>这首歌还没有歌词。</Text>
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                打开工具页后可以搜索 QQ 候选，也支持导入本地 `.lrc` / `.txt`。
+              </Text>
+            </VStack>
+          ) : (
+            lyricSlots.map(({ slotKey, offset, line }) => {
+              const isActive = offset === 0 && activeIndex >= 0 && Boolean(line);
+              const isNearActive = Math.abs(offset) === 1 && Boolean(line);
+              const font = isActive
+                ? "largeTitle"
+                : isNearActive
+                  ? "title3"
+                  : "body";
+
+              return (
+                <Text
+                  key={slotKey}
+                  font={font}
+                  multilineTextAlignment={"center"}
+                  foregroundColor={isActive ? "systemBlue" : "secondary"}>
+                  {line?.text || " "}
+                </Text>
+              );
+            })
+          )}
+
+          {focusedLyric?.timeSeconds != null ? (
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {formatTime(
+                focusedLyric.timeSeconds + parsedLyrics.offsetMs / 1000,
+              )}
+            </Text>
+          ) : null}
+        </VStack>
+
+        <NavigationLink
+          destination={
+            <LyricsToolsPage
+              player={props.player}
+              track={props.track}
+              rawLyrics={props.rawLyrics}
+              lyricsEntry={props.lyricsEntry}
+              onLyricsEntryChange={props.onLyricsEntryChange}
+              onRawLyricsChange={props.onRawLyricsChange}
+            />
+          }>
+          <HStack spacing={12}>
+            <VStack alignment={"leading"} spacing={4}>
+              <Text font={"body"}>打开歌词工具</Text>
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                搜索候选、导入本地歌词、调整偏移、查看诊断
+              </Text>
+            </VStack>
+            <Spacer />
+            <Text font={"caption"} foregroundColor={"systemBlue"}>
+              打开
+            </Text>
+          </HStack>
+        </NavigationLink>
+
+        <VStack spacing={1} />
+      </LazyVStack>
+    </ScrollView>
   );
 }
 
-export function LyricsPage(props: LyricsPageProps) {
-  const track = props.track;
-  const player = getSharedPlayer();
-  const [lyricsEntry, setLyricsEntry] = useState(
-    (track ? loadTrackLyricsEntry(trackStorageInput(track)) : null) as
-      | TrackLyricsEntry
-      | null,
-  );
-  const [rawLyrics, setRawLyrics] = useState(lyricsEntry?.rawLyric ?? "");
+function LyricsToolsPage(props: LyricsToolsPageProps) {
   const [options, setOptions] = useState([] as LyricSearchOption[]);
-  const [selectedSongMid, setSelectedSongMid] = useState(lyricsEntry?.songMid ?? "");
+  const [selectedSongMid, setSelectedSongMid] = useState(
+    props.lyricsEntry?.songMid ?? "",
+  );
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
   const [message, setMessage] = useState("");
   const [searchNonce, setSearchNonce] = useState(0);
-  const [autoApplyAllowed, setAutoApplyAllowed] = useState(true);
-  const [searchText, setSearchText] = useState(defaultSearchKey(track));
+  const [searchText, setSearchText] = useState(defaultSearchKey(props.track));
+
+  const progress = usePlayerProgress(props.player);
+  const liveTime = usePlaybackClock(progress, 500);
+  const parsedLyrics = useMemo(() => parseLyrics(props.rawLyrics), [props.rawLyrics]);
+  const offsetMs = props.lyricsEntry?.offsetMs ?? 0;
+  const effectiveCurrentTime = useMemo(
+    () => Math.max(0, liveTime + offsetMs / 1000),
+    [liveTime, offsetMs],
+  );
+  const activeIndex = useMemo(
+    () => activeLyricLineIndex(parsedLyrics, effectiveCurrentTime),
+    [parsedLyrics, effectiveCurrentTime],
+  );
+  const activeLine = useMemo(
+    () => activeLyricLine(parsedLyrics, effectiveCurrentTime),
+    [parsedLyrics, effectiveCurrentTime],
+  );
 
   useEffect(() => {
-    if (!track) {
-      setLyricsEntry(null);
-      setRawLyrics("");
+    if (!props.track) {
       setOptions([]);
       setSelectedSongMid("");
       setMessage("");
-      setAutoApplyAllowed(true);
       setSearchText("");
       return;
     }
 
-    const nextEntry = loadTrackLyricsEntry(trackStorageInput(track));
-    setLyricsEntry(nextEntry);
-    setRawLyrics(nextEntry?.rawLyric ?? "");
     setOptions([]);
-    setSelectedSongMid(nextEntry?.songMid ?? "");
+    setSelectedSongMid(props.lyricsEntry?.songMid ?? "");
     setMessage("");
-    setAutoApplyAllowed(!nextEntry?.rawLyric);
-    setSearchText(nextEntry?.searchKey ?? defaultSearchKey(track));
-  }, [track?.id]);
+    setSearchText(props.lyricsEntry?.searchKey ?? defaultSearchKey(props.track));
+    setSearchNonce((current) => current + 1);
+  }, [props.track?.id]);
 
-  const searchKey = searchText.trim();
+  async function applyOnlineLyrics(option: LyricSearchOption, auto = false) {
+    if (!props.track) {
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const nextLyrics = await fetchLyricBySongMid(option.songMid);
+      const nextEntry: TrackLyricsEntry = {
+        rawLyric: nextLyrics,
+        songMid: option.songMid,
+        selectedLabel: option.label,
+        searchKey: searchText.trim(),
+        offsetMs: props.lyricsEntry?.offsetMs ?? 0,
+        sourceKind: auto ? "qq-auto" : "qq-manual",
+        updatedAt: new Date().toISOString(),
+      };
+
+      saveTrackLyricsEntry(trackStorageInput(props.track), nextEntry);
+      props.onLyricsEntryChange(nextEntry);
+      props.onRawLyricsChange(nextLyrics);
+      setSelectedSongMid(option.songMid);
+      setMessage(auto ? `已自动匹配 ${option.label}` : `已切换到 ${option.label}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
-    if (!track || !searchKey.trim()) {
+    const searchKey = searchText.trim();
+    if (!props.track || !searchKey) {
       setOptions([]);
       return;
     }
 
     let cancelled = false;
-    const currentEntry = loadTrackLyricsEntry(trackStorageInput(track));
+    const currentEntry = loadTrackLyricsEntry(trackStorageInput(props.track));
 
     async function runSearch() {
       setSearching(true);
@@ -257,10 +351,7 @@ export function LyricsPage(props: LyricsPageProps) {
         }
 
         setOptions(nextOptions);
-
-        if (currentEntry?.songMid) {
-          setSelectedSongMid(currentEntry.songMid);
-        }
+        setSelectedSongMid(currentEntry?.songMid ?? "");
 
         if (!nextOptions.length && !currentEntry?.rawLyric) {
           setMessage("无法找到歌词");
@@ -272,7 +363,7 @@ export function LyricsPage(props: LyricsPageProps) {
             ? nextOptions.find((option) => option.songMid === currentEntry.songMid)
             : undefined) ?? nextOptions[0];
 
-        if (autoApplyAllowed && !currentEntry?.rawLyric && preferredOption) {
+        if (!currentEntry?.rawLyric && preferredOption) {
           await applyOnlineLyrics(preferredOption, true);
         }
       } catch (error) {
@@ -294,42 +385,10 @@ export function LyricsPage(props: LyricsPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [track?.id, searchKey, searchNonce, autoApplyAllowed]);
-
-  async function applyOnlineLyrics(option: LyricSearchOption, auto = false) {
-    if (!track) {
-      return;
-    }
-
-    setBusy(true);
-
-    try {
-      const nextLyrics = await fetchLyricBySongMid(option.songMid);
-      const nextEntry: TrackLyricsEntry = {
-        rawLyric: nextLyrics,
-        songMid: option.songMid,
-        selectedLabel: option.label,
-        searchKey,
-        offsetMs: lyricsEntry?.offsetMs ?? 0,
-        sourceKind: auto ? "qq-auto" : "qq-manual",
-        updatedAt: new Date().toISOString(),
-      };
-
-      saveTrackLyricsEntry(trackStorageInput(track), nextEntry);
-      setLyricsEntry(nextEntry);
-      setRawLyrics(nextLyrics);
-      setSelectedSongMid(option.songMid);
-      setAutoApplyAllowed(false);
-      setMessage(auto ? `已自动匹配 ${option.label}` : `已切换到 ${option.label}`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
+  }, [searchNonce]);
 
   async function importLyricsFile() {
-    if (!track) {
+    if (!props.track) {
       return;
     }
 
@@ -351,16 +410,16 @@ export function LyricsPage(props: LyricsPageProps) {
       const nextLyrics = await FileManager.readAsString(filePath);
       const nextEntry: TrackLyricsEntry = {
         rawLyric: nextLyrics,
-        searchKey,
-        offsetMs: lyricsEntry?.offsetMs ?? 0,
+        searchKey: searchText.trim(),
+        offsetMs: props.lyricsEntry?.offsetMs ?? 0,
         sourceKind: "local",
         updatedAt: new Date().toISOString(),
       };
-      saveTrackLyricsEntry(trackStorageInput(track), nextEntry);
-      setLyricsEntry(nextEntry);
-      setRawLyrics(nextLyrics);
+
+      saveTrackLyricsEntry(trackStorageInput(props.track), nextEntry);
+      props.onLyricsEntryChange(nextEntry);
+      props.onRawLyricsChange(nextLyrics);
       setSelectedSongMid("");
-      setAutoApplyAllowed(false);
       setMessage("歌词已导入");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -373,7 +432,7 @@ export function LyricsPage(props: LyricsPageProps) {
   }
 
   async function clearLyrics() {
-    if (!track) {
+    if (!props.track) {
       return;
     }
 
@@ -388,36 +447,36 @@ export function LyricsPage(props: LyricsPageProps) {
       return;
     }
 
-    clearTrackLyrics(trackStorageInput(track));
-    setLyricsEntry(null);
-    setRawLyrics("");
+    clearTrackLyrics(trackStorageInput(props.track));
+    props.onLyricsEntryChange(null);
+    props.onRawLyricsChange("");
     setSelectedSongMid("");
-    setAutoApplyAllowed(false);
     setMessage("歌词已清除");
-    setSearchNonce((current) => current + 1);
   }
 
   function adjustOffset(deltaMs: number) {
-    if (!track) {
+    if (!props.track) {
       return;
     }
 
     const nextEntry = setTrackLyricOffset(
-      trackStorageInput(track),
-      (lyricsEntry?.offsetMs ?? 0) + deltaMs,
+      trackStorageInput(props.track),
+      (props.lyricsEntry?.offsetMs ?? 0) + deltaMs,
     );
 
     if (!nextEntry) {
       return;
     }
 
-    setLyricsEntry(nextEntry);
+    props.onLyricsEntryChange(nextEntry);
     setMessage(`歌词偏移已调整到 ${nextEntry.offsetMs ?? 0}ms`);
   }
 
+  const lyricSource = lyricSourceLabel(props.lyricsEntry, parsedLyrics.lines.length > 0);
+
   return (
     <ScrollView
-      navigationTitle={"歌词"}
+      navigationTitle={"歌词工具"}
       navigationBarTitleDisplayMode={"inline"}
       scrollDismissesKeyboard={"interactively"}>
       <LazyVStack
@@ -426,78 +485,89 @@ export function LyricsPage(props: LyricsPageProps) {
         padding={{ horizontal: 16, vertical: 16 }}>
         <VStack alignment={"leading"} spacing={12}>
           <Text font={"caption"} foregroundColor={"secondary"}>
-            当前歌词
+            搜索歌词
           </Text>
-          <LiveLyricsPanel
-            player={player}
-            track={track}
-            rawLyrics={rawLyrics}
-            lyricsEntry={lyricsEntry}
+          <TextField
+            title="搜索关键字"
+            placeholder="手动输入歌名重新搜词"
+            value={searchText}
+            onChanged={setSearchText}
           />
-        </VStack>
-
-        <VStack alignment={"leading"} spacing={12}>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            歌词工具
-          </Text>
-          <VStack alignment={"leading"} spacing={10}>
-            <TextField
-              title="搜索关键字"
-              placeholder="手动输入歌名重新搜词"
-              value={searchText}
-              onChanged={setSearchText}
+          <HStack spacing={10}>
+            <Button
+              title={searching ? "搜索中..." : "重新搜索"}
+              buttonStyle="borderedProminent"
+              action={() => {
+                setSearchNonce((current) => current + 1);
+              }}
             />
-            <HStack spacing={10}>
+            <Button
+              title={busy ? "处理中..." : "导入 LRC / TXT"}
+              buttonStyle="bordered"
+              action={() => void importLyricsFile()}
+            />
+            {props.rawLyrics ? (
               <Button
-                title={searching ? "搜索中..." : "重新搜索"}
-                buttonStyle="borderedProminent"
-                action={() => {
-                  setAutoApplyAllowed(false);
-                  setSearchNonce((current) => current + 1);
-                }}
-              />
-              <Button
-                title={busy ? "处理中..." : "导入 LRC / TXT"}
+                title="清除"
                 buttonStyle="bordered"
-                action={() => void importLyricsFile()}
+                action={() => void clearLyrics()}
               />
-              {rawLyrics ? (
-                <Button
-                  title="清除"
-                  buttonStyle="bordered"
-                  action={() => void clearLyrics()}
-                />
-              ) : null}
-            </HStack>
-          </VStack>
+            ) : null}
+          </HStack>
         </VStack>
 
         <VStack alignment={"leading"} spacing={12}>
           <Text font={"caption"} foregroundColor={"secondary"}>
             歌词偏移
           </Text>
-          <VStack alignment={"leading"} spacing={10}>
-            <HStack spacing={10}>
-              <Button
-                title="-50ms"
-                buttonStyle="bordered"
-                action={() => adjustOffset(-50)}
-              />
-              <Button
-                title="归零"
-                buttonStyle="bordered"
-                action={() => adjustOffset(-(lyricsEntry?.offsetMs ?? 0))}
-              />
-              <Button
-                title="+50ms"
-                buttonStyle="bordered"
-                action={() => adjustOffset(50)}
-              />
-            </HStack>
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              正值会让歌词更早进入高亮，负值会更晚。步进固定 50ms。
-            </Text>
-          </VStack>
+          <HStack spacing={10}>
+            <Button
+              title="-50ms"
+              buttonStyle="bordered"
+              action={() => adjustOffset(-50)}
+            />
+            <Button
+              title="归零"
+              buttonStyle="bordered"
+              action={() => adjustOffset(-(props.lyricsEntry?.offsetMs ?? 0))}
+            />
+            <Button
+              title="+50ms"
+              buttonStyle="bordered"
+              action={() => adjustOffset(50)}
+            />
+          </HStack>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            正值会让歌词更早进入高亮，负值会更晚。步进固定 50ms。
+          </Text>
+        </VStack>
+
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            诊断
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            当前播放时间：{formatTime(effectiveCurrentTime)}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            当前高亮索引：{activeIndex >= 0 ? String(activeIndex) : "未命中"}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            当前高亮时间：
+            {activeLine?.timeSeconds != null
+              ? formatTime(activeLine.timeSeconds + parsedLyrics.offsetMs / 1000)
+              : "无"}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            当前歌词来源：
+            {[
+              lyricSource,
+              props.lyricsEntry?.selectedLabel,
+              props.lyricsEntry?.sourceKind,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "无"}
+          </Text>
         </VStack>
 
         {message ? (
@@ -511,7 +581,7 @@ export function LyricsPage(props: LyricsPageProps) {
           </VStack>
         ) : null}
 
-        {track ? (
+        {props.track ? (
           <VStack alignment={"leading"} spacing={12}>
             <Text font={"caption"} foregroundColor={"secondary"}>
               歌词候选
@@ -539,5 +609,38 @@ export function LyricsPage(props: LyricsPageProps) {
         <VStack spacing={1} />
       </LazyVStack>
     </ScrollView>
+  );
+}
+
+export function LyricsPage(props: LyricsPageProps) {
+  const player = getSharedPlayer();
+  const [lyricsEntry, setLyricsEntry] = useState(
+    (props.track ? loadTrackLyricsEntry(trackStorageInput(props.track)) : null) as
+      | TrackLyricsEntry
+      | null,
+  );
+  const [rawLyrics, setRawLyrics] = useState(lyricsEntry?.rawLyric ?? "");
+
+  useEffect(() => {
+    if (!props.track) {
+      setLyricsEntry(null);
+      setRawLyrics("");
+      return;
+    }
+
+    const nextEntry = loadTrackLyricsEntry(trackStorageInput(props.track));
+    setLyricsEntry(nextEntry);
+    setRawLyrics(nextEntry?.rawLyric ?? "");
+  }, [props.track?.id]);
+
+  return (
+    <LyricsFollowPage
+      player={player}
+      track={props.track}
+      rawLyrics={rawLyrics}
+      lyricsEntry={lyricsEntry}
+      onLyricsEntryChange={setLyricsEntry}
+      onRawLyricsChange={setRawLyrics}
+    />
   );
 }
