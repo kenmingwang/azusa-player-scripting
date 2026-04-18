@@ -55,7 +55,6 @@ import {
   saveSearchPlaylist,
   saveSourcePlaylist,
   setActivePlaylist,
-  setPlaylistTableState,
 } from "./storage";
 import {
   createVideoSource,
@@ -74,7 +73,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
-const BUILD_VERSION = "0.1.1";
+const BUILD_VERSION = "0.1.2";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -310,6 +309,255 @@ function MiniPlayerSection(props: MiniPlayerSectionProps) {
   );
 }
 
+type QueueManagementPageProps = {
+  playlist: PlaylistRecord | null;
+  tracks: Track[];
+  sourceTitle: string;
+  currentIndex: number;
+  playbackState: PlaybackUiState;
+  playLoading: boolean;
+  onPlayTrackAt: (index: number) => void | Promise<void>;
+  onHandleDuplicatePlaylistToNew: (playlistId: string, title: string) => Promise<void>;
+  onHandleAddPlaylistToTitle: (playlistId: string, title: string) => Promise<void>;
+  onAddTracksByTitle: (title: string, tracks: Track[]) => Promise<void>;
+  onHandleDeleteTracks: (trackIds: string[]) => Promise<void>;
+  onHandleRenameTrack: (track: Track) => Promise<void>;
+  onHandleAddTrack: (track: Track) => Promise<void>;
+};
+
+function QueueManagementPage(props: QueueManagementPageProps) {
+  const [queueQuery, setQueueQuery] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
+  const tracks = props.tracks;
+  const normalizedQueueQuery = queueQuery.trim().toLowerCase();
+  const canManageTracks = props.playlist?.kind !== "source";
+  const hasSelectedTracks = selectedTrackIds.length > 0;
+
+  useEffect(() => {
+    setQueueQuery("");
+    setSelectionMode(false);
+    setSelectedTrackIds([]);
+  }, [props.playlist?.id]);
+
+  const filteredTracks = useMemo(
+    () =>
+      tracks
+        .map((track, index) => ({ track, index }))
+        .filter(({ track }) => {
+          if (!normalizedQueueQuery) {
+            return true;
+          }
+
+          return [
+            track.title,
+            track.artist,
+            track.sourceTitle,
+            track.cid,
+          ].some((value) => value.toLowerCase().includes(normalizedQueueQuery));
+        }),
+    [tracks, normalizedQueueQuery],
+  );
+
+  return (
+    <List
+      navigationTitle={"播放队列"}
+      navigationBarTitleDisplayMode={"inline"}
+      listStyle={"plain"}>
+      <Section>
+        <VStack alignment={"leading"} spacing={10}>
+          <Text font={"title3"}>
+            {props.playlist?.title || props.sourceTitle}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            共 {tracks.length} 首
+          </Text>
+        </VStack>
+      </Section>
+
+      <Section header={<Text font={"caption"}>队列管理</Text>}>
+        {props.playlist?.kind === "search" && tracks.length > 0 ? (
+          <HStack spacing={10}>
+            <Button
+              title="另存为歌单"
+              buttonStyle="bordered"
+              action={() =>
+                void props.onHandleDuplicatePlaylistToNew(
+                  props.playlist.id,
+                  `${props.playlist.title} 收藏`,
+                )
+              }
+            />
+            <Button
+              title="整单加入歌单"
+              buttonStyle="bordered"
+              action={() =>
+                void props.onHandleAddPlaylistToTitle(
+                  props.playlist.id,
+                  props.playlist.title,
+                )
+              }
+            />
+          </HStack>
+        ) : null}
+
+        {canManageTracks && tracks.length > 0 ? (
+          <HStack spacing={10}>
+            <Button
+              title={selectionMode ? "结束选择" : "批量选择"}
+              buttonStyle="bordered"
+              action={() => {
+                setSelectionMode((current) => !current);
+                setSelectedTrackIds([]);
+              }}
+            />
+            {selectionMode ? (
+              <>
+                <Button
+                  title="加入歌单"
+                  buttonStyle="bordered"
+                  action={async () => {
+                    const title = await Dialog.prompt({
+                      title: "加入歌单",
+                      message: "输入目标歌单名。若不存在，会新建一个自定义歌单。",
+                      placeholder: "目标歌单名",
+                      confirmLabel: "加入",
+                      cancelLabel: "取消",
+                      selectAll: true,
+                    });
+                    if (title == null) {
+                      return;
+                    }
+                    const selectedTracks = tracks.filter((track) =>
+                      selectedTrackIds.includes(track.id),
+                    );
+                    await props.onAddTracksByTitle(title, selectedTracks);
+                  }}
+                />
+                <Button
+                  title={hasSelectedTracks ? `删除已选 ${selectedTrackIds.length}` : "删除已选"}
+                  buttonStyle="bordered"
+                  action={() => void props.onHandleDeleteTracks(selectedTrackIds)}
+                />
+              </>
+            ) : null}
+          </HStack>
+        ) : null}
+
+        {tracks.length > 8 ? (
+          <VStack alignment={"leading"} spacing={8}>
+            <TextField
+              title="搜索队列"
+              placeholder="按歌曲名 / 歌手 / CID 过滤"
+              value={queueQuery}
+              onChanged={setQueueQuery}
+            />
+            {normalizedQueueQuery ? (
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                当前结果 {filteredTracks.length} / {tracks.length}
+              </Text>
+            ) : null}
+          </VStack>
+        ) : null}
+      </Section>
+
+      <Section header={<Text font={"caption"}>歌曲列表</Text>}>
+        {tracks.length === 0 ? (
+          <VStack alignment={"leading"} spacing={4}>
+            <Text font={"headline"}>还没有歌单</Text>
+            <Text font={"subheadline"} foregroundColor={"secondary"}>
+              现在支持视频、收藏夹、合集和频道四种来源。
+            </Text>
+          </VStack>
+        ) : filteredTracks.length === 0 ? (
+          <VStack alignment={"leading"} spacing={4}>
+            <Text font={"headline"}>没有匹配结果</Text>
+            <Text font={"subheadline"} foregroundColor={"secondary"}>
+              试试换个关键词，或者清空搜索条件。
+            </Text>
+          </VStack>
+        ) : (
+          filteredTracks.map(({ track, index }) => {
+            const isActive = props.currentIndex === index;
+            const isSelected = selectedTrackIds.includes(track.id);
+            const duration = formatDuration(track.durationSeconds);
+            const isCached = Boolean(track.localFilePath);
+            const displayTitle = displayTrackTitle(track, props.sourceTitle);
+
+            return (
+              <VStack alignment={"leading"} spacing={8} key={track.id}>
+                <Button
+                  action={() =>
+                    selectionMode
+                      ? setSelectedTrackIds((current) =>
+                          current.includes(track.id)
+                            ? current.filter((item) => item !== track.id)
+                            : [...current, track.id],
+                        )
+                      : void props.onPlayTrackAt(index)
+                  }>
+                  <HStack spacing={12}>
+                    <VStack alignment={"leading"} spacing={4}>
+                      <Text font={isActive ? "headline" : "body"}>
+                        {index + 1}. {displayTitle}
+                      </Text>
+                      <Text font={"caption"} foregroundColor={"secondary"}>
+                        {track.artist}
+                        {duration ? ` · ${duration}` : ""}
+                        {isCached ? " · 已缓存" : ""}
+                        {" · "}
+                        CID {track.cid}
+                      </Text>
+                    </VStack>
+                    <Spacer />
+                    <Text
+                      font={"caption"}
+                      foregroundColor={
+                        selectionMode
+                          ? isSelected
+                            ? "systemBlue"
+                            : "secondary"
+                          : isActive
+                            ? "systemBlue"
+                            : "secondary"
+                      }>
+                      {selectionMode
+                        ? isSelected
+                          ? "已选"
+                          : "选择"
+                        : trackStatusLabel(props.playbackState, isActive, props.playLoading)}
+                    </Text>
+                  </HStack>
+                </Button>
+
+                {!selectionMode && canManageTracks && isActive ? (
+                  <HStack spacing={8}>
+                    <Button
+                      title="改名"
+                      buttonStyle="bordered"
+                      action={() => void props.onHandleRenameTrack(track)}
+                    />
+                    <Button
+                      title="加入歌单"
+                      buttonStyle="bordered"
+                      action={() => void props.onHandleAddTrack(track)}
+                    />
+                    <Button
+                      title="删除"
+                      buttonStyle="bordered"
+                      action={() => void props.onHandleDeleteTracks([track.id])}
+                    />
+                  </HStack>
+                ) : null}
+              </VStack>
+            );
+          })
+        )}
+      </Section>
+    </List>
+  );
+}
+
 function displayTrackTitle(track: Track | null, sourceTitle: string) {
   if (!track) {
     return "还没开始播放";
@@ -444,9 +692,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [keepAliveState, setKeepAliveState] = useState(
     ScriptApi?.env === "index" ? "idle" : "unsupported",
   );
-  const [queueQuery, setQueueQuery] = useState("");
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
   const activePlaylist = useMemo(
     () =>
       playlistLibrary.find((playlist) => playlist.id === activePlaylistId) ??
@@ -492,9 +737,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
 
     player.setQueue(playlist?.tracks ?? [], matchedTrackId);
-    setQueueQuery(playlist?.tableState?.filterText ?? "");
-    setSelectionMode(false);
-    setSelectedTrackIds([]);
 
     if (matchedTrackId && playlist) {
       const matchedIndex = playlist.tracks.findIndex(
@@ -693,7 +935,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
 
     const nextState = deleteTracksFromPlaylist(activePlaylistId, trackIds);
     syncFromState(nextState);
-    setSelectedTrackIds([]);
     applyPlaylistToPlayer(getActivePlaylist(nextState), currentTrack?.id);
   }
 
@@ -948,27 +1189,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     player.setPlaybackMode(playbackMode);
   }, [playbackMode]);
 
-  useEffect(() => {
-    setQueueQuery(activePlaylist?.tableState?.filterText ?? "");
-    setSelectionMode(false);
-    setSelectedTrackIds([]);
-  }, [activePlaylistId]);
-
-  useEffect(() => {
-    if (!activePlaylistId) {
-      return;
-    }
-
-    if ((activePlaylist?.tableState?.filterText ?? "") === queueQuery) {
-      return;
-    }
-
-    const nextState = setPlaylistTableState(activePlaylistId, {
-      filterText: queueQuery,
-    });
-    setPlaylistLibrary(nextState.playlistLibrary);
-  }, [activePlaylistId, activePlaylist?.tableState?.filterText, queueQuery]);
-
   const playbackSnapshot = useMemo(
     () =>
       buildPlaybackSnapshot({
@@ -1097,27 +1317,22 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   );
   const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
   const currentTrackLabel = displayTrackTitle(currentTrack, sourceTitle);
-  const normalizedQueueQuery = queueQuery.trim().toLowerCase();
-  const filteredTracks = useMemo(
-    () =>
-      tracks
-        .map((track, index) => ({ track, index }))
-        .filter(({ track }) => {
-          if (!normalizedQueueQuery) {
-            return true;
-          }
+  const queuePreview = useMemo(() => {
+    if (!tracks.length) {
+      return [] as Array<{ track: Track; index: number }>;
+    }
 
-          return [
-            track.title,
-            track.artist,
-            track.sourceTitle,
-            track.cid,
-          ].some((value) => value.toLowerCase().includes(normalizedQueueQuery));
-        }),
-    [tracks, normalizedQueueQuery],
-  );
-  const canManageTracks = activePlaylist?.kind !== "source";
-  const hasSelectedTracks = selectedTrackIds.length > 0;
+    if (currentIndex >= 0) {
+      const start = Math.max(0, currentIndex - 1);
+      const end = Math.min(tracks.length, start + 4);
+      return tracks.slice(start, end).map((track, offset) => ({
+        track,
+        index: start + offset,
+      }));
+    }
+
+    return tracks.slice(0, 4).map((track, index) => ({ track, index }));
+  }, [tracks, currentIndex]);
 
   return (
     <NavigationStack>
@@ -1267,90 +1482,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         </Section>
 
         <Section header={<Text font={"caption"}>播放队列</Text>}>
-          {activePlaylist?.kind === "search" && tracks.length > 0 ? (
-            <HStack spacing={10}>
-              <Button
-                title="另存为歌单"
-                buttonStyle="bordered"
-                action={() =>
-                  void handleDuplicatePlaylistToNew(
-                    activePlaylist.id,
-                    `${activePlaylist.title} 收藏`,
-                  )
-                }
-              />
-              <Button
-                title="整单加入歌单"
-                buttonStyle="bordered"
-                action={() =>
-                  void handleAddPlaylistToTitle(
-                    activePlaylist.id,
-                    activePlaylist.title,
-                  )
-                }
-              />
-            </HStack>
-          ) : null}
-
-          {canManageTracks && tracks.length > 0 ? (
-            <HStack spacing={10}>
-              <Button
-                title={selectionMode ? "结束选择" : "批量选择"}
-                buttonStyle="bordered"
-                action={() => {
-                  setSelectionMode((current) => !current);
-                  setSelectedTrackIds([]);
-                }}
-              />
-              {selectionMode ? (
-                <>
-                  <Button
-                    title="加入歌单"
-                    buttonStyle="bordered"
-                    action={async () => {
-                      const title = await Dialog.prompt({
-                        title: "加入歌单",
-                        message: "输入目标歌单名。若不存在，会新建一个自定义歌单。",
-                        placeholder: "目标歌单名",
-                        confirmLabel: "加入",
-                        cancelLabel: "取消",
-                        selectAll: true,
-                      });
-                      if (title == null) {
-                        return;
-                      }
-                      const selectedTracks = tracks.filter((track) =>
-                        selectedTrackIds.includes(track.id),
-                      );
-                      await addTracksByTitle(title, selectedTracks);
-                    }}
-                  />
-                  <Button
-                    title={hasSelectedTracks ? `删除已选 ${selectedTrackIds.length}` : "删除已选"}
-                    buttonStyle="bordered"
-                    action={() => void handleDeleteTracks(selectedTrackIds)}
-                  />
-                </>
-              ) : null}
-            </HStack>
-          ) : null}
-
-          {tracks.length > 8 ? (
-            <VStack alignment={"leading"} spacing={8}>
-              <TextField
-                title="搜索队列"
-                placeholder="按歌曲名 / 歌手 / CID 过滤"
-                value={queueQuery}
-                onChanged={setQueueQuery}
-              />
-              {normalizedQueueQuery ? (
-                <Text font={"caption"} foregroundColor={"secondary"}>
-                  当前结果 {filteredTracks.length} / {tracks.length}
-                </Text>
-              ) : null}
-            </VStack>
-          ) : null}
-
           {tracks.length === 0 ? (
             <VStack alignment={"leading"} spacing={4}>
               <Text font={"headline"}>还没有歌单</Text>
@@ -1358,32 +1489,47 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 现在支持视频、收藏夹、合集和频道四种来源。
               </Text>
             </VStack>
-          ) : filteredTracks.length === 0 ? (
-            <VStack alignment={"leading"} spacing={4}>
-              <Text font={"headline"}>没有匹配结果</Text>
-              <Text font={"subheadline"} foregroundColor={"secondary"}>
-                试试换个关键词，或者清空搜索条件。
-              </Text>
-            </VStack>
           ) : (
-            filteredTracks.map(({ track, index }) => {
-              const isActive = currentIndex === index;
-              const isSelected = selectedTrackIds.includes(track.id);
-              const duration = formatDuration(track.durationSeconds);
-              const isCached = Boolean(track.localFilePath);
-              const displayTitle = displayTrackTitle(track, sourceTitle);
-              return (
-                <VStack alignment={"leading"} spacing={8} key={track.id}>
-                  <Button
-                    action={() =>
-                      selectionMode
-                        ? setSelectedTrackIds((current) =>
-                            current.includes(track.id)
-                              ? current.filter((item) => item !== track.id)
-                              : [...current, track.id],
-                          )
-                        : void playTrackAt(index)
-                    }>
+            <VStack alignment={"leading"} spacing={12}>
+              <HStack spacing={12}>
+                <VStack alignment={"leading"} spacing={4}>
+                  <Text font={"headline"}>{activePlaylist?.title || sourceTitle}</Text>
+                  <Text font={"caption"} foregroundColor={"secondary"}>
+                    共 {tracks.length} 首
+                    {currentIndex >= 0 ? ` · 当前 ${currentIndex + 1}/${tracks.length}` : ""}
+                  </Text>
+                </VStack>
+                <Spacer />
+                <NavigationLink
+                  destination={
+                    <QueueManagementPage
+                      playlist={activePlaylist}
+                      tracks={tracks}
+                      sourceTitle={sourceTitle}
+                      currentIndex={currentIndex}
+                      playbackState={playbackState}
+                      playLoading={playLoading}
+                      onPlayTrackAt={(index) => void playTrackAt(index)}
+                      onHandleDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
+                      onHandleAddPlaylistToTitle={handleAddPlaylistToTitle}
+                      onAddTracksByTitle={addTracksByTitle}
+                      onHandleDeleteTracks={handleDeleteTracks}
+                      onHandleRenameTrack={handleRenameTrack}
+                      onHandleAddTrack={handleAddTrack}
+                    />
+                  }>
+                  <Text font={"body"} foregroundColor={"systemBlue"}>
+                    打开队列
+                  </Text>
+                </NavigationLink>
+              </HStack>
+
+              {queuePreview.map(({ track, index }) => {
+                const isActive = currentIndex === index;
+                const duration = formatDuration(track.durationSeconds);
+                const displayTitle = displayTrackTitle(track, sourceTitle);
+                return (
+                  <Button key={track.id} action={() => void playTrackAt(index)}>
                     <HStack spacing={12}>
                       <VStack alignment={"leading"} spacing={4}>
                         <Text font={isActive ? "headline" : "body"}>
@@ -1392,54 +1538,25 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                         <Text font={"caption"} foregroundColor={"secondary"}>
                           {track.artist}
                           {duration ? ` · ${duration}` : ""}
-                          {isCached ? " · 已缓存" : ""}
-                          {" · "}
-                          CID {track.cid}
                         </Text>
                       </VStack>
                       <Spacer />
                       <Text
                         font={"caption"}
-                        foregroundColor={
-                          selectionMode
-                            ? isSelected
-                              ? "systemBlue"
-                              : "secondary"
-                            : isActive
-                              ? "systemBlue"
-                              : "secondary"
-                        }>
-                        {selectionMode
-                          ? isSelected
-                            ? "已选"
-                            : "选择"
-                          : trackStatusLabel(playbackState, isActive, playLoading)}
+                        foregroundColor={isActive ? "systemBlue" : "secondary"}>
+                        {trackStatusLabel(playbackState, isActive, playLoading)}
                       </Text>
                     </HStack>
                   </Button>
+                );
+              })}
 
-                  {!selectionMode && canManageTracks && isActive ? (
-                    <HStack spacing={8}>
-                      <Button
-                        title="改名"
-                        buttonStyle="bordered"
-                        action={() => void handleRenameTrack(track)}
-                      />
-                      <Button
-                        title="加入歌单"
-                        buttonStyle="bordered"
-                        action={() => void handleAddTrack(track)}
-                      />
-                      <Button
-                        title="删除"
-                        buttonStyle="bordered"
-                        action={() => void handleDeleteTracks([track.id])}
-                      />
-                    </HStack>
-                  ) : null}
-                </VStack>
-              );
-            })
+              {tracks.length > queuePreview.length ? (
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  还有 {tracks.length - queuePreview.length} 首未显示
+                </Text>
+              ) : null}
+            </VStack>
           )}
         </Section>
       </List>
