@@ -73,7 +73,7 @@ import type {
 import { AzusaNowPlayingLiveActivity } from "../live_activity";
 
 const DEFAULT_SOURCE = createVideoSource("BV1wr4y1v7TA", "默认歌单");
-const BUILD_VERSION = "0.1.5";
+const BUILD_VERSION = "0.1.6";
 
 const globalRuntime = globalThis as any;
 const setIntervalApi =
@@ -324,7 +324,9 @@ type QueueManagementPageProps = {
   onHandleAddTrack: (track: Track) => Promise<void>;
 };
 
-function QueueManagementPage(props: QueueManagementPageProps) {
+type QueueToolsPageProps = QueueManagementPageProps;
+
+function QueueToolsPage(props: QueueToolsPageProps) {
   const [queueQuery, setQueueQuery] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
@@ -364,7 +366,7 @@ function QueueManagementPage(props: QueueManagementPageProps) {
 
   return (
     <ScrollView
-      navigationTitle={"播放队列"}
+      navigationTitle={"队列工具"}
       navigationBarTitleDisplayMode={"inline"}>
       <LazyVStack
         alignment={"leading"}
@@ -565,6 +567,114 @@ function QueueManagementPage(props: QueueManagementPageProps) {
           })}
           </LazyVStack>
         )}
+        </VStack>
+
+        <VStack spacing={1} />
+      </LazyVStack>
+    </ScrollView>
+  );
+}
+
+function QueueManagementPage(props: QueueManagementPageProps) {
+  const tracks = props.tracks;
+
+  return (
+    <ScrollView
+      navigationTitle={"播放队列"}
+      navigationBarTitleDisplayMode={"inline"}>
+      <LazyVStack
+        alignment={"leading"}
+        spacing={24}
+        padding={{ horizontal: 16, vertical: 16 }}>
+        <VStack alignment={"leading"} spacing={10}>
+          <HStack spacing={12}>
+            <VStack alignment={"leading"} spacing={4}>
+              <Text font={"title3"}>
+                {props.playlist?.title || props.sourceTitle}
+              </Text>
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                共 {tracks.length} 首
+                {props.currentIndex >= 0
+                  ? ` · 当前 ${props.currentIndex + 1}/${tracks.length}`
+                  : ""}
+              </Text>
+            </VStack>
+            <Spacer />
+            <NavigationLink
+              destination={
+                <QueueToolsPage
+                  playlist={props.playlist}
+                  tracks={props.tracks}
+                  sourceTitle={props.sourceTitle}
+                  currentIndex={props.currentIndex}
+                  playbackState={props.playbackState}
+                  playLoading={props.playLoading}
+                  onPlayTrackAt={props.onPlayTrackAt}
+                  onHandleDuplicatePlaylistToNew={props.onHandleDuplicatePlaylistToNew}
+                  onHandleAddPlaylistToTitle={props.onHandleAddPlaylistToTitle}
+                  onAddTracksByTitle={props.onAddTracksByTitle}
+                  onHandleDeleteTracks={props.onHandleDeleteTracks}
+                  onHandleRenameTrack={props.onHandleRenameTrack}
+                  onHandleAddTrack={props.onHandleAddTrack}
+                />
+              }>
+              <Text font={"body"} foregroundColor={"systemBlue"}>
+                打开工具
+              </Text>
+            </NavigationLink>
+          </HStack>
+        </VStack>
+
+        <VStack alignment={"leading"} spacing={12}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            歌曲列表
+          </Text>
+          {tracks.length === 0 ? (
+            <VStack alignment={"leading"} spacing={4}>
+              <Text font={"headline"}>还没有歌单</Text>
+              <Text font={"subheadline"} foregroundColor={"secondary"}>
+                现在支持视频、收藏夹、合集和频道四种来源。
+              </Text>
+            </VStack>
+          ) : (
+            <LazyVStack alignment={"leading"} spacing={12}>
+              {tracks.map((track, index) => {
+                const isActive = props.currentIndex === index;
+                const duration = formatDuration(track.durationSeconds);
+                const isCached = Boolean(track.localFilePath);
+                const displayTitle = displayTrackTitle(track, props.sourceTitle);
+
+                return (
+                  <Button key={track.id} action={() => void props.onPlayTrackAt(index)}>
+                    <HStack spacing={12}>
+                      <VStack alignment={"leading"} spacing={4}>
+                        <Text font={isActive ? "headline" : "body"}>
+                          {index + 1}. {displayTitle}
+                        </Text>
+                        <Text font={"caption"} foregroundColor={"secondary"}>
+                          {track.artist}
+                          {duration ? ` · ${duration}` : ""}
+                          {isCached ? " · 已缓存" : ""}
+                          {" · "}
+                          CID {track.cid}
+                        </Text>
+                      </VStack>
+                      <Spacer />
+                      <Text
+                        font={"caption"}
+                        foregroundColor={isActive ? "systemBlue" : "secondary"}>
+                        {trackStatusLabel(
+                          props.playbackState,
+                          isActive,
+                          props.playLoading,
+                        )}
+                      </Text>
+                    </HStack>
+                  </Button>
+                );
+              })}
+            </LazyVStack>
+          )}
         </VStack>
 
         <VStack spacing={1} />
