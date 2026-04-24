@@ -4,6 +4,7 @@ import {
   Button,
   Dialog,
   HStack,
+  Image,
   LazyVStack,
   NavigationLink,
   NavigationStack,
@@ -26,6 +27,7 @@ import {
   toLiveActivityState,
 } from "./externalBridge";
 import { NowPlayingPage } from "./nowPlayingPage";
+import { LyricsPage } from "./lyricsPage";
 import {
   PlaybackModeControl,
   TransportControls,
@@ -204,6 +206,236 @@ function formatDuration(seconds?: number) {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+type AzusaTab = "player" | "queue" | "lyrics" | "library";
+
+const AZUSA_TABS: Array<{
+  id: AzusaTab;
+  title: string;
+  systemName: string;
+}> = [
+  { id: "player", title: "播放", systemName: "play.circle" },
+  { id: "queue", title: "队列", systemName: "music.note.list" },
+  { id: "lyrics", title: "歌词", systemName: "quote.bubble" },
+  { id: "library", title: "歌单", systemName: "folder" },
+];
+
+function AppTabBar(props: {
+  activeTab: AzusaTab;
+  onChange: (tab: AzusaTab) => void;
+}) {
+  return (
+    <HStack
+      spacing={8}
+      padding={{ horizontal: 14, vertical: 10 }}
+      background={{
+        style: {
+          light: "rgba(250, 250, 252, 0.96)",
+          dark: "rgba(28, 28, 30, 0.96)",
+        },
+      }}>
+      {AZUSA_TABS.map((item) => {
+        const isActive = props.activeTab === item.id;
+
+        return (
+          <Button
+            key={item.id}
+            buttonStyle={isActive ? "borderedProminent" : "bordered"}
+            action={() => props.onChange(item.id)}>
+            <VStack
+              spacing={3}
+              padding={{ horizontal: 8, vertical: 4 }}>
+              <Image
+                systemName={item.systemName}
+                resizable
+                aspectRatio={{ contentMode: "fit" }}
+                frame={{ width: 18, height: 18 }}
+              />
+              <Text font={"caption2"}>{item.title}</Text>
+            </VStack>
+          </Button>
+        );
+      })}
+    </HStack>
+  );
+}
+
+function AppPage(props: {
+  title: string;
+  subtitle?: string;
+  children?: any;
+}) {
+  return (
+    <ScrollView
+      navigationTitle={props.title}
+      navigationBarTitleDisplayMode={"inline"}>
+      <LazyVStack
+        alignment={"leading"}
+        spacing={18}
+        padding={{ horizontal: 16, vertical: 14 }}>
+        <VStack alignment={"leading"} spacing={4}>
+          <Text font={"title2"}>{props.title}</Text>
+          {props.subtitle ? (
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {props.subtitle}
+            </Text>
+          ) : null}
+        </VStack>
+        {props.children}
+        <VStack spacing={1} />
+      </LazyVStack>
+    </ScrollView>
+  );
+}
+
+function SectionCard(props: { children?: any; accent?: boolean }) {
+  return (
+    <VStack
+      alignment={"leading"}
+      spacing={14}
+      padding={{ horizontal: 16, vertical: 16 }}
+      background={{
+        style: props.accent
+          ? {
+              light: "rgba(239, 246, 255, 0.95)",
+              dark: "rgba(37, 99, 235, 0.16)",
+            }
+          : {
+              light: "rgba(248, 250, 252, 0.94)",
+              dark: "rgba(255, 255, 255, 0.055)",
+            },
+        shape: {
+          type: "rect",
+          cornerRadius: 20,
+          style: "continuous",
+        },
+      }}>
+      {props.children}
+    </VStack>
+  );
+}
+
+function PrimaryActionRow(props: {
+  title: string;
+  subtitle?: string;
+  systemName: string;
+  trailing?: string;
+}) {
+  return (
+    <HStack spacing={12}>
+      <Image
+        systemName={props.systemName}
+        resizable
+        aspectRatio={{ contentMode: "fit" }}
+        frame={{ width: 20, height: 20 }}
+      />
+      <VStack alignment={"leading"} spacing={3}>
+        <Text font={"body"}>{props.title}</Text>
+        {props.subtitle ? (
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            {props.subtitle}
+          </Text>
+        ) : null}
+      </VStack>
+      <Spacer />
+      {props.trailing ? (
+        <Text font={"caption"} foregroundColor={"systemBlue"}>
+          {props.trailing}
+        </Text>
+      ) : null}
+    </HStack>
+  );
+}
+
+function CompactPager(props: {
+  page: number;
+  totalPages: number;
+  startResult: number;
+  endResult: number;
+  resultCount: number;
+  pageInput: string;
+  onPageInputChange: (value: string) => void;
+  onJumpToPage: (page: number) => void;
+}) {
+  return (
+    <VStack alignment={"leading"} spacing={8}>
+      <HStack spacing={8}>
+        <Button
+          title="上一页"
+          buttonStyle="bordered"
+          action={() => props.onJumpToPage(props.page - 1)}
+        />
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          第 {props.page}/{props.totalPages} 页
+        </Text>
+        <Button
+          title="下一页"
+          buttonStyle="bordered"
+          action={() => props.onJumpToPage(props.page + 1)}
+        />
+        <Spacer />
+      </HStack>
+      <HStack spacing={8}>
+        <TextField
+          title="跳页"
+          placeholder="页码"
+          value={props.pageInput}
+          onChanged={props.onPageInputChange}
+        />
+        <Button
+          title="跳转"
+          buttonStyle="bordered"
+          action={() => props.onJumpToPage(Number.parseInt(props.pageInput, 10))}
+        />
+      </HStack>
+      <Text font={"caption2"} foregroundColor={"secondary"}>
+        显示 {props.startResult}-{props.endResult} / {props.resultCount}
+      </Text>
+    </VStack>
+  );
+}
+
+function TrackListRow(props: {
+  key?: any;
+  track: Track;
+  sourceTitle: string;
+  displayIndex: number;
+  isActive: boolean;
+  playbackState: PlaybackUiState;
+  playLoading: boolean;
+  onPress: () => void | Promise<void>;
+}) {
+  const duration = formatDuration(props.track.durationSeconds);
+
+  return (
+    <Button action={() => void props.onPress()}>
+      <HStack spacing={12}>
+        <VStack alignment={"leading"} spacing={4}>
+          <Text
+            font={props.isActive ? "headline" : "body"}
+            foregroundColor={props.isActive ? "systemBlue" : "primary"}>
+            {props.displayIndex}. {displayTrackTitle(props.track, props.sourceTitle)}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            {props.track.artist}
+            {duration ? ` · ${duration}` : ""}
+            {props.track.cid ? ` · CID ${props.track.cid}` : ""}
+          </Text>
+        </VStack>
+        <Spacer />
+        <Text
+          font={"caption"}
+          foregroundColor={props.isActive ? "systemBlue" : "secondary"}>
+          {trackStatusLabel(
+            props.playbackState,
+            props.isActive,
+            props.playLoading,
+          )}
+        </Text>
+      </HStack>
+    </Button>
+  );
+}
+
 type MiniPlayerSectionProps = {
   player: ReturnType<typeof getSharedPlayer>;
   currentTrack: Track | null;
@@ -313,6 +545,54 @@ function MiniPlayerSection(props: MiniPlayerSectionProps) {
   );
 }
 
+function PlayerProgressPanel(props: MiniPlayerSectionProps) {
+  const progress = usePlayerProgress(props.player);
+  const liveTime = usePlaybackClock(progress, 500);
+  const currentDurationSeconds =
+    progress.duration || props.currentTrack?.durationSeconds || 0;
+
+  return (
+    <SectionCard>
+      <PlaybackProgressView progress={progress} />
+      {currentDurationSeconds > 0 ? (
+        <HStack spacing={8}>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            {formatDuration(liveTime)} / {formatDuration(currentDurationSeconds)}
+          </Text>
+          <Spacer />
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            {props.playbackLabel}
+          </Text>
+        </HStack>
+      ) : null}
+      <NavigationLink
+        destination={
+          <NowPlayingPage
+            currentTrack={props.currentTrack}
+            artworkUrl={props.currentTrack?.cover || props.sourceCover}
+            sourceTitle={props.sourceTitle}
+            playbackState={props.playbackState}
+            playbackMode={props.playbackMode}
+            playbackDetail={props.playbackDetail}
+            currentIndex={props.player.getCurrentIndex()}
+            queueLength={props.player.getQueue().length}
+            onPrimaryAction={props.onPrimaryAction}
+            onPrevious={props.onPrevious}
+            onNext={props.onNext}
+            onCyclePlaybackMode={props.onCyclePlaybackMode}
+          />
+        }>
+        <PrimaryActionRow
+          title="全屏播放"
+          subtitle="查看封面、歌词、队列状态"
+          systemName="rectangle.expand.vertical"
+          trailing="打开"
+        />
+      </NavigationLink>
+    </SectionCard>
+  );
+}
+
 type QueueManagementPageProps = {
   playlist: PlaylistRecord | null;
   tracks: Track[];
@@ -390,34 +670,16 @@ function QueueSearchPage(props: QueueToolsPageProps) {
           </Text>
         </VStack>
 
-        <HStack spacing={8}>
-          <Button
-            title="Prev"
-            buttonStyle="bordered"
-            action={() => jumpToPage(pageState.page - 1)}
-          />
-          <Button
-            title="Next"
-            buttonStyle="bordered"
-            action={() => jumpToPage(pageState.page + 1)}
-          />
-          <TextField
-            title="Page"
-            placeholder="Page"
-            value={pageInput}
-            onChanged={setPageInput}
-          />
-          <Button
-            title="Go"
-            buttonStyle="bordered"
-            action={() => jumpToPage(Number.parseInt(pageInput, 10))}
-          />
-        </HStack>
-
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          Page {pageState.page}/{pageState.totalPages} · showing{" "}
-          {pageState.startResult}-{pageState.endResult} / {pageState.resultCount}
-        </Text>
+        <CompactPager
+          page={pageState.page}
+          totalPages={pageState.totalPages}
+          startResult={pageState.startResult}
+          endResult={pageState.endResult}
+          resultCount={pageState.resultCount}
+          pageInput={pageInput}
+          onPageInputChange={setPageInput}
+          onJumpToPage={jumpToPage}
+        />
 
         <VStack alignment={"leading"} spacing={12}>
           <Text font={"caption"} foregroundColor={"secondary"}>
@@ -566,34 +828,16 @@ function QueueBatchEditPage(props: QueueToolsPageProps) {
           />
         </HStack>
 
-        <HStack spacing={8}>
-          <Button
-            title="Prev"
-            buttonStyle="bordered"
-            action={() => jumpToPage(pageState.page - 1)}
-          />
-          <Button
-            title="Next"
-            buttonStyle="bordered"
-            action={() => jumpToPage(pageState.page + 1)}
-          />
-          <TextField
-            title="Page"
-            placeholder="Page"
-            value={pageInput}
-            onChanged={setPageInput}
-          />
-          <Button
-            title="Go"
-            buttonStyle="bordered"
-            action={() => jumpToPage(Number.parseInt(pageInput, 10))}
-          />
-        </HStack>
-
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          Page {pageState.page}/{pageState.totalPages} · showing{" "}
-          {pageState.startResult}-{pageState.endResult} / {pageState.resultCount}
-        </Text>
+        <CompactPager
+          page={pageState.page}
+          totalPages={pageState.totalPages}
+          startResult={pageState.startResult}
+          endResult={pageState.endResult}
+          resultCount={pageState.resultCount}
+          pageInput={pageInput}
+          onPageInputChange={setPageInput}
+          onJumpToPage={jumpToPage}
+        />
 
         <LazyVStack alignment={"leading"} spacing={12}>
           {visibleTracks.map(({ track, index, displayIndex, isActive, rowId }) => {
@@ -850,34 +1094,16 @@ function QueueManagementPage(props: QueueManagementPageProps) {
           </HStack>
         </VStack>
 
-        <HStack spacing={8}>
-          <Button
-            title="Prev"
-            buttonStyle="bordered"
-            action={() => jumpToPage(pageState.page - 1)}
-          />
-          <Button
-            title="Next"
-            buttonStyle="bordered"
-            action={() => jumpToPage(pageState.page + 1)}
-          />
-          <TextField
-            title="Page"
-            placeholder="Page"
-            value={pageInput}
-            onChanged={setPageInput}
-          />
-          <Button
-            title="Go"
-            buttonStyle="bordered"
-            action={() => jumpToPage(Number.parseInt(pageInput, 10))}
-          />
-        </HStack>
-
-        <Text font={"caption"} foregroundColor={"secondary"}>
-          Page {pageState.page}/{pageState.totalPages} · showing{" "}
-          {pageState.startResult}-{pageState.endResult} / {pageState.resultCount}
-        </Text>
+        <CompactPager
+          page={pageState.page}
+          totalPages={pageState.totalPages}
+          startResult={pageState.startResult}
+          endResult={pageState.endResult}
+          resultCount={pageState.resultCount}
+          pageInput={pageInput}
+          onPageInputChange={setPageInput}
+          onJumpToPage={jumpToPage}
+        />
 
         <VStack alignment={"leading"} spacing={12}>
           <Text font={"caption"} foregroundColor={"secondary"}>
@@ -927,6 +1153,131 @@ function QueueManagementPage(props: QueueManagementPageProps) {
         <VStack spacing={1} />
       </LazyVStack>
     </ScrollView>
+  );
+}
+
+function QueueTabPanel(props: QueueManagementPageProps) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(pageForTrackIndex(props.currentIndex));
+  const [pageInput, setPageInput] = useState(String(page));
+  const pageState = useMemo(
+    () =>
+      buildPaginatedTrackState({
+        tracks: props.tracks,
+        query,
+        page,
+        currentIndex: props.currentIndex,
+      }),
+    [props.tracks, query, page, props.currentIndex],
+  );
+
+  useEffect(() => {
+    if (!query && props.currentIndex >= 0) {
+      setPage(pageForTrackIndex(props.currentIndex));
+    }
+  }, [props.currentIndex, query]);
+
+  useEffect(() => {
+    setPageInput(String(pageState.page));
+  }, [pageState.page]);
+
+  function handleQueryChange(nextQuery: string) {
+    setQuery(nextQuery);
+    setPage(1);
+  }
+
+  function jumpToPage(nextPage: number) {
+    setPage(clampPage(nextPage, pageState.totalPages));
+  }
+
+  return (
+    <AppPage
+      title="队列"
+      subtitle={`${props.playlist?.title || props.sourceTitle} · ${props.tracks.length} 首`}>
+      <VStack alignment={"leading"} spacing={14}>
+        <SectionCard>
+          <HStack spacing={12}>
+            <VStack alignment={"leading"} spacing={4}>
+              <Text font={"headline"}>
+                {props.playlist?.title || props.sourceTitle}
+              </Text>
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                {props.currentIndex >= 0
+                  ? `当前 ${props.currentIndex + 1}/${props.tracks.length}`
+                  : `共 ${props.tracks.length} 首`}
+              </Text>
+            </VStack>
+            <Spacer />
+            <NavigationLink
+              destination={
+                <QueueToolsPage
+                  playlist={props.playlist}
+                  tracks={props.tracks}
+                  sourceTitle={props.sourceTitle}
+                  currentIndex={props.currentIndex}
+                  playbackState={props.playbackState}
+                  playLoading={props.playLoading}
+                  onPlayTrackAt={props.onPlayTrackAt}
+                  onHandleDuplicatePlaylistToNew={props.onHandleDuplicatePlaylistToNew}
+                  onHandleAddPlaylistToTitle={props.onHandleAddPlaylistToTitle}
+                  onAddTracksByTitle={props.onAddTracksByTitle}
+                  onHandleDeleteTracks={props.onHandleDeleteTracks}
+                  onHandleRenameTrack={props.onHandleRenameTrack}
+                  onHandleAddTrack={props.onHandleAddTrack}
+                />
+              }>
+              <PrimaryActionRow
+                title="工具"
+                subtitle="搜索、批量、管理"
+                systemName="slider.horizontal.3"
+                trailing="打开"
+              />
+            </NavigationLink>
+          </HStack>
+        </SectionCard>
+
+        <TextField
+          title="搜索队列"
+          placeholder="搜索全量歌曲"
+          value={query}
+          onChanged={handleQueryChange}
+        />
+
+        <CompactPager
+          page={pageState.page}
+          totalPages={pageState.totalPages}
+          startResult={pageState.startResult}
+          endResult={pageState.endResult}
+          resultCount={pageState.resultCount}
+          pageInput={pageInput}
+          onPageInputChange={setPageInput}
+          onJumpToPage={jumpToPage}
+        />
+
+        {pageState.rows.length === 0 ? (
+          <SectionCard>
+            <Text font={"body"} foregroundColor={"secondary"}>
+              没有匹配的歌曲。
+            </Text>
+          </SectionCard>
+        ) : (
+          <LazyVStack alignment={"leading"} spacing={12}>
+            {pageState.rows.map((row) => (
+              <TrackListRow
+                key={row.id}
+                track={row.track}
+                sourceTitle={props.sourceTitle}
+                displayIndex={row.displayIndex}
+                isActive={row.isActive}
+                playbackState={props.playbackState}
+                playLoading={props.playLoading}
+                onPress={() => props.onPlayTrackAt(row.index)}
+              />
+            ))}
+          </LazyVStack>
+        )}
+      </VStack>
+    </AppPage>
   );
 }
 
@@ -1070,6 +1421,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [currentTrack, setCurrentTrack] = useState(initialCurrentTrack as Track | null);
   const [playerMessage] = useState(getNativePlayerCompatibilityMessage());
   const [scenePhase, setScenePhase] = useState("active");
+  const [activeTab, setActiveTab] = useState("player" as AzusaTab);
   const [keepAliveState, setKeepAliveState] = useState(
     ScriptApi?.env === "index" ? "idle" : "unsupported",
   );
@@ -1710,263 +2062,183 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   );
   const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
   const currentTrackLabel = displayTrackTitle(currentTrack, sourceTitle);
-  const queuePreview = useMemo(() => {
-    if (!tracks.length) {
-      return [] as Array<{ track: Track; index: number }>;
-    }
-
-    if (currentIndex >= 0) {
-      const start = Math.max(0, currentIndex - 1);
-      const end = Math.min(tracks.length, start + 4);
-      return tracks.slice(start, end).map((track, offset) => ({
-        track,
-        index: start + offset,
-      }));
-    }
-
-    return tracks.slice(0, 4).map((track, index) => ({ track, index }));
-  }, [tracks, currentIndex]);
 
   return (
     <NavigationStack>
-      <ScrollView
-        navigationTitle={`Azusa ${BUILD_VERSION}`}
-        navigationBarTitleDisplayMode={"large"}
-      >
-        <LazyVStack
-          alignment={"leading"}
-          spacing={24}
-          padding={{ horizontal: 16, vertical: 16 }}>
-          <VStack alignment={"leading"} spacing={12}>
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              当前歌单
-            </Text>
-          <VStack
-            alignment={"leading"}
-            spacing={14}
-            padding={{ horizontal: 16, vertical: 18 }}
-            background={{
-              style: {
-                light: "rgba(248, 250, 252, 0.9)",
-                dark: "rgba(255, 255, 255, 0.045)",
-              },
-              shape: {
-                type: "rect",
-                cornerRadius: 26,
-                style: "continuous",
-              },
-            }}>
-            <HStack spacing={14}>
-              <ArtworkView
-                cover={sourceCover || currentTrack?.cover}
-                width={124}
-                height={78}
-                contentMode="fill"
-                backgroundStyle="none"
-                cornerRadius={18}
-                fallbackColor={playbackState === "playing" ? "systemBlue" : "systemGray3"}
-              />
-              <VStack alignment={"leading"} spacing={4}>
-                <Text font={"title3"}>{sourceTitle}</Text>
-                <Text font={"subheadline"} foregroundColor={"secondary"}>
-                  {currentSourceKind} · {currentSourceSummary}
-                </Text>
-                <Text font={"caption"} foregroundColor={"secondary"}>
-                  {queueSummary} · 已缓存 {cachedTrackCount} / {tracks.length} 首
-                </Text>
-              </VStack>
-            </HStack>
-            <VStack alignment={"leading"} spacing={2}>
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                当前曲目
-              </Text>
-              <Text font={"headline"}>{currentTrackLabel}</Text>
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                {modeLabel} · {modeHint}
-                {currentTrackDuration ? ` · ${currentTrackDuration}` : ""}
-              </Text>
-            </VStack>
-
-            <HStack spacing={12}>
-              <NavigationLink
-                destination={
-                  <SourceLibraryPage
-                    activePlaylistId={activePlaylistId}
-                    playlists={playlistLibrary}
-                    recentSources={visibleRecentSources.slice(0, 8)}
-                    loading={loading}
-                    errorMessage={error}
-                    defaultQuery={playbackSource.input}
-                    onSearchInput={loadSourceFromInput}
-                    onOpenPlaylist={openPlaylist}
-                    onCreatePlaylist={handleCreatePlaylist}
-                    onRenamePlaylist={handleRenamePlaylist}
-                    onDeletePlaylist={handleDeletePlaylist}
-                    onRefreshPlaylist={refreshPlaylistSource}
-                    onDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
-                    onAddPlaylistToTitle={handleAddPlaylistToTitle}
-                    onLoadSource={importSourceToSearch}
+      <VStack spacing={0}>
+        {activeTab === "player" ? (
+          <AppPage
+            title={`Azusa ${BUILD_VERSION}`}
+            subtitle={`${currentSourceKind} · ${currentSourceSummary || queueSummary}`}>
+            <VStack alignment={"leading"} spacing={16}>
+              <SectionCard accent>
+                <HStack spacing={14}>
+                  <ArtworkView
+                    cover={currentTrack?.cover || sourceCover}
+                    width={132}
+                    height={132}
+                    contentMode="fill"
+                    backgroundStyle="none"
+                    cornerRadius={22}
+                    fallbackColor={
+                      playbackState === "playing" ? "systemBlue" : "systemGray3"
+                    }
                   />
-              }>
-                <Text font={"body"} foregroundColor={"systemBlue"}>
-                  打开歌单库
-                </Text>
-              </NavigationLink>
-              {activePlaylist?.source ? (
-                <Button
-                  title={loading ? "同步中..." : "重新拉取"}
-                  buttonStyle="bordered"
-                  action={() => void refreshPlaylistSource(activePlaylist.id)}
+                  <VStack alignment={"leading"} spacing={6}>
+                    <Text font={"caption"} foregroundColor={"secondary"}>
+                      当前播放
+                    </Text>
+                    <Text font={"title2"}>{currentTrackLabel}</Text>
+                    <Text font={"subheadline"} foregroundColor={"secondary"}>
+                      {currentTrack?.artist || ownerName || "Azusa"}
+                    </Text>
+                    <Text font={"caption"} foregroundColor={"secondary"}>
+                      {modeLabel}
+                      {currentTrackDuration ? ` · ${currentTrackDuration}` : ""}
+                    </Text>
+                  </VStack>
+                </HStack>
+
+                <TransportControls
+                  playbackState={playbackState}
+                  onPrevious={() => void skipBy(-1)}
+                  onPrimaryAction={() => void handlePrimaryAction()}
+                  onNext={() => void skipBy(1)}
                 />
-              ) : null}
-              {activePlaylist?.kind === "search" ? (
-                <Button
-                  title="另存为歌单"
-                  buttonStyle="bordered"
-                  action={() =>
-                    void handleDuplicatePlaylistToNew(
-                      activePlaylist.id,
-                      `${activePlaylist.title} 收藏`,
-                    )
-                  }
-                />
-              ) : null}
-            </HStack>
 
-            {playerMessage || pendingCommand || error || scenePhase !== "active" ? (
-              <VStack alignment={"leading"} spacing={3}>
-                {playerMessage ? (
-                  <Text font={"caption"} foregroundColor={"systemOrange"}>
-                    {playerMessage}
-                  </Text>
-                ) : null}
-                {pendingCommand ? (
-                  <Text font={"caption"} foregroundColor={"systemBlue"}>
-                    外部命令待处理: {commandLabel(pendingCommand.type)}
-                  </Text>
-                ) : null}
-                {scenePhase !== "active" ? (
-                  <Text font={"caption"} foregroundColor={"secondary"}>
-                    {scenePhase} · {keepAliveLabel}
-                  </Text>
-                ) : null}
-                {error ? (
-                  <Text font={"caption"} foregroundColor={"systemRed"}>
-                    {error}
-                  </Text>
-                ) : null}
-              </VStack>
-            ) : null}
-          </VStack>
-          </VStack>
+                <HStack spacing={10}>
+                  <PlaybackModeControl
+                    playbackMode={playbackMode}
+                    onCyclePlaybackMode={cyclePlaybackMode}
+                  />
+                  <Button
+                    title="歌词"
+                    buttonStyle="bordered"
+                    action={() => setActiveTab("lyrics")}
+                  />
+                  <Button
+                    title="队列"
+                    buttonStyle="bordered"
+                    action={() => setActiveTab("queue")}
+                  />
+                </HStack>
+              </SectionCard>
 
-        <VStack alignment={"leading"} spacing={12}>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            迷你播放器
-          </Text>
-          <MiniPlayerSection
-            player={player}
-            currentTrack={currentTrack}
-            sourceCover={sourceCover}
-            sourceTitle={sourceTitle}
-            ownerName={ownerName}
-            playbackState={playbackState}
-            playbackLabel={playbackLabel}
-            playbackMode={playbackMode}
-            modeLabel={modeLabel}
-            playbackDetail={playbackDetail}
-            onPrimaryAction={() => void handlePrimaryAction()}
-            onPrevious={() => void skipBy(-1)}
-            onNext={() => void skipBy(1)}
-            onCyclePlaybackMode={cyclePlaybackMode}
-          />
-        </VStack>
+              <PlayerProgressPanel
+                player={player}
+                currentTrack={currentTrack}
+                sourceCover={sourceCover}
+                sourceTitle={sourceTitle}
+                ownerName={ownerName}
+                playbackState={playbackState}
+                playbackLabel={playbackLabel}
+                playbackMode={playbackMode}
+                modeLabel={modeLabel}
+                playbackDetail={playbackDetail}
+                onPrimaryAction={() => void handlePrimaryAction()}
+                onPrevious={() => void skipBy(-1)}
+                onNext={() => void skipBy(1)}
+                onCyclePlaybackMode={cyclePlaybackMode}
+              />
 
-        <VStack alignment={"leading"} spacing={12}>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            播放队列
-          </Text>
-          {tracks.length === 0 ? (
-            <VStack alignment={"leading"} spacing={4}>
-              <Text font={"headline"}>还没有歌单</Text>
-              <Text font={"subheadline"} foregroundColor={"secondary"}>
-                现在支持视频、收藏夹、合集和频道四种来源。
-              </Text>
-            </VStack>
-          ) : (
-            <VStack alignment={"leading"} spacing={12}>
-              <HStack spacing={12}>
-                <VStack alignment={"leading"} spacing={4}>
-                  <Text font={"headline"}>{activePlaylist?.title || sourceTitle}</Text>
-                  <Text font={"caption"} foregroundColor={"secondary"}>
-                    共 {tracks.length} 首
-                    {currentIndex >= 0 ? ` · 当前 ${currentIndex + 1}/${tracks.length}` : ""}
-                  </Text>
-                </VStack>
-                <Spacer />
-                <NavigationLink
-                  destination={
-                    <QueueManagementPage
-                      playlist={activePlaylist}
-                      tracks={tracks}
-                      sourceTitle={sourceTitle}
-                      currentIndex={currentIndex}
-                      playbackState={playbackState}
-                      playLoading={playLoading}
-                      onPlayTrackAt={(index) => void playTrackAt(index)}
-                      onHandleDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
-                      onHandleAddPlaylistToTitle={handleAddPlaylistToTitle}
-                      onAddTracksByTitle={addTracksByTitle}
-                      onHandleDeleteTracks={handleDeleteTracks}
-                      onHandleRenameTrack={handleRenameTrack}
-                      onHandleAddTrack={handleAddTrack}
+              <SectionCard>
+                <HStack spacing={12}>
+                  <VStack alignment={"leading"} spacing={5}>
+                    <Text font={"headline"}>{sourceTitle}</Text>
+                    <Text font={"caption"} foregroundColor={"secondary"}>
+                      {queueSummary} · 已缓存 {cachedTrackCount} / {tracks.length} 首
+                    </Text>
+                  </VStack>
+                  <Spacer />
+                  {activePlaylist?.source ? (
+                    <Button
+                      title={loading ? "同步中..." : "刷新"}
+                      buttonStyle="bordered"
+                      action={() => void refreshPlaylistSource(activePlaylist.id)}
                     />
-                  }>
-                  <Text font={"body"} foregroundColor={"systemBlue"}>
-                    打开队列
-                  </Text>
-                </NavigationLink>
-              </HStack>
-
-              {queuePreview.map(({ track, index }) => {
-                const isActive = currentIndex === index;
-                const duration = formatDuration(track.durationSeconds);
-                const displayTitle = displayTrackTitle(track, sourceTitle);
-                return (
-                  <Button key={track.id} action={() => void playTrackAt(index)}>
-                    <HStack spacing={12}>
-                      <VStack alignment={"leading"} spacing={4}>
-                        <Text font={isActive ? "headline" : "body"}>
-                          {index + 1}. {displayTitle}
-                        </Text>
-                        <Text font={"caption"} foregroundColor={"secondary"}>
-                          {track.artist}
-                          {duration ? ` · ${duration}` : ""}
-                        </Text>
-                      </VStack>
-                      <Spacer />
-                      <Text
-                        font={"caption"}
-                        foregroundColor={isActive ? "systemBlue" : "secondary"}>
-                        {trackStatusLabel(playbackState, isActive, playLoading)}
+                  ) : null}
+                </HStack>
+                {playerMessage || pendingCommand || error || scenePhase !== "active" ? (
+                  <VStack alignment={"leading"} spacing={3}>
+                    {playerMessage ? (
+                      <Text font={"caption"} foregroundColor={"systemOrange"}>
+                        {playerMessage}
                       </Text>
-                    </HStack>
-                  </Button>
-                );
-              })}
-
-              {tracks.length > queuePreview.length ? (
-                <Text font={"caption"} foregroundColor={"secondary"}>
-                  还有 {tracks.length - queuePreview.length} 首未显示
-                </Text>
-              ) : null}
+                    ) : null}
+                    {pendingCommand ? (
+                      <Text font={"caption"} foregroundColor={"systemBlue"}>
+                        外部命令待处理：{commandLabel(pendingCommand.type)}
+                      </Text>
+                    ) : null}
+                    {scenePhase !== "active" ? (
+                      <Text font={"caption"} foregroundColor={"secondary"}>
+                        {scenePhase} · {keepAliveLabel}
+                      </Text>
+                    ) : null}
+                    {error ? (
+                      <Text font={"caption"} foregroundColor={"systemRed"}>
+                        {error}
+                      </Text>
+                    ) : null}
+                  </VStack>
+                ) : null}
+              </SectionCard>
             </VStack>
-          )}
-        </VStack>
+          </AppPage>
+        ) : null}
 
-          <VStack spacing={1} />
-        </LazyVStack>
-      </ScrollView>
+        {activeTab === "queue" ? (
+          <QueueTabPanel
+            playlist={activePlaylist}
+            tracks={tracks}
+            sourceTitle={sourceTitle}
+            currentIndex={currentIndex}
+            playbackState={playbackState}
+            playLoading={playLoading}
+            onPlayTrackAt={(index) => void playTrackAt(index)}
+            onHandleDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
+            onHandleAddPlaylistToTitle={handleAddPlaylistToTitle}
+            onAddTracksByTitle={addTracksByTitle}
+            onHandleDeleteTracks={handleDeleteTracks}
+            onHandleRenameTrack={handleRenameTrack}
+            onHandleAddTrack={handleAddTrack}
+          />
+        ) : null}
+
+        {activeTab === "lyrics" ? <LyricsPage track={currentTrack} /> : null}
+
+        {activeTab === "library" ? (
+          <SourceLibraryPage
+            activePlaylistId={activePlaylistId}
+            playlists={playlistLibrary}
+            recentSources={visibleRecentSources.slice(0, 8)}
+            loading={loading}
+            errorMessage={error}
+            defaultQuery={playbackSource.input}
+            onSearchInput={async (input) => {
+              await loadSourceFromInput(input);
+              setActiveTab("queue");
+            }}
+            onOpenPlaylist={async (playlistId) => {
+              await openPlaylist(playlistId);
+              setActiveTab("queue");
+            }}
+            onCreatePlaylist={handleCreatePlaylist}
+            onRenamePlaylist={handleRenamePlaylist}
+            onDeletePlaylist={handleDeletePlaylist}
+            onRefreshPlaylist={refreshPlaylistSource}
+            onDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
+            onAddPlaylistToTitle={handleAddPlaylistToTitle}
+            onLoadSource={async (source) => {
+              await importSourceToSearch(source);
+              setActiveTab("queue");
+            }}
+          />
+        ) : null}
+
+        <AppTabBar activeTab={activeTab} onChange={setActiveTab} />
+      </VStack>
     </NavigationStack>
   );
+
 }
