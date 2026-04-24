@@ -485,10 +485,41 @@ function QueueBatchEditPage(props: QueueToolsPageProps) {
     [selectedTrackIds],
   );
   const hasSelectedTracks = selectedTrackIds.length > 0;
+  const [page, setPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
+  const pageState = useMemo(
+    () =>
+      buildPaginatedTrackState({
+        tracks: props.tracks,
+        page,
+        currentIndex: props.currentIndex,
+      }),
+    [props.tracks, page, props.currentIndex],
+  );
+  const visibleTracks = useMemo(
+    () =>
+      pageState.rows.map((row) => ({
+        track: row.track,
+        index: row.index,
+        displayIndex: row.displayIndex,
+        isActive: row.isActive,
+        rowId: row.id,
+      })),
+    [pageState.rows],
+  );
 
   useEffect(() => {
     setSelectedTrackIds([]);
+    setPage(1);
   }, [props.playlist?.id]);
+
+  useEffect(() => {
+    setPageInput(String(pageState.page));
+  }, [pageState.page]);
+
+  function jumpToPage(nextPage: number) {
+    setPage(clampPage(nextPage, pageState.totalPages));
+  }
 
   return (
     <ScrollView
@@ -536,15 +567,43 @@ function QueueBatchEditPage(props: QueueToolsPageProps) {
           />
         </HStack>
 
+        <HStack spacing={8}>
+          <Button
+            title="Prev"
+            buttonStyle="bordered"
+            action={() => jumpToPage(pageState.page - 1)}
+          />
+          <Button
+            title="Next"
+            buttonStyle="bordered"
+            action={() => jumpToPage(pageState.page + 1)}
+          />
+          <TextField
+            title="Page"
+            placeholder="Page"
+            value={pageInput}
+            onChanged={setPageInput}
+          />
+          <Button
+            title="Go"
+            buttonStyle="bordered"
+            action={() => jumpToPage(Number.parseInt(pageInput, 10))}
+          />
+        </HStack>
+
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          Page {pageState.page}/{pageState.totalPages} · showing{" "}
+          {pageState.startResult}-{pageState.endResult} / {pageState.resultCount}
+        </Text>
+
         <LazyVStack alignment={"leading"} spacing={12}>
-          {props.tracks.map((track, index) => {
-            const isActive = props.currentIndex === index;
+          {visibleTracks.map(({ track, index, displayIndex, isActive, rowId }) => {
             const isSelected = selectedTrackIdSet.has(track.id);
             const displayTitle = displayTrackTitle(track, props.sourceTitle);
 
             return (
               <Button
-                key={track.id}
+                key={rowId}
                 action={() =>
                   setSelectedTrackIds((current) =>
                     current.includes(track.id)
@@ -555,7 +614,7 @@ function QueueBatchEditPage(props: QueueToolsPageProps) {
                 <HStack spacing={12}>
                   <VStack alignment={"leading"} spacing={4}>
                     <Text font={isActive ? "headline" : "body"}>
-                      {index + 1}. {displayTitle}
+                      {displayIndex}. {displayTitle}
                     </Text>
                     <Text font={"caption"} foregroundColor={"secondary"}>
                       {track.artist} · CID {track.cid}
