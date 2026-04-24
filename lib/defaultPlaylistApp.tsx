@@ -53,7 +53,7 @@ import {
   getActivePlaylist,
   getPlaylistById,
   loadState,
-  persistPlayerState,
+  persistPlaybackSnapshot,
   rememberRecentSource,
   renamePlaylist,
   renameTrackInPlaylist,
@@ -1021,6 +1021,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }),
     [],
   );
+  const externalSurfaceBridge = useMemo(
+    () => ({
+      lastKey: "",
+    }),
+    [],
+  );
   const backgroundBridge = useMemo(
     () => ({
       scenePhase: "active",
@@ -1419,13 +1425,13 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       }
 
       commandBridge.lastHandledId = pending.id;
-      clearPendingExternalCommand(pending.id);
+      syncFromState(clearPendingExternalCommand(pending.id));
     } catch (commandError) {
       setError(
         commandError instanceof Error ? commandError.message : String(commandError),
       );
       commandBridge.lastHandledId = pending.id;
-      clearPendingExternalCommand(pending.id);
+      syncFromState(clearPendingExternalCommand(pending.id));
     } finally {
       commandBridge.busy = false;
     }
@@ -1595,27 +1601,39 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   );
 
   useEffect(() => {
-    const nextState = persistPlayerState({
+    persistPlaybackSnapshot({
       sourceDescriptor: playbackSource,
       sourceTitle,
       playbackMode,
-      queue: tracks,
       currentTrackId: currentTrack?.id,
       playbackSnapshot,
     });
-    syncFromState(nextState);
-    reloadExternalSurfaces();
+
+    const nextExternalKey = JSON.stringify({
+      sourceInput: playbackSource.input,
+      sourceTitle,
+      queueLength: tracks.length,
+      currentTrackId: currentTrack?.id ?? "",
+      currentIndex,
+      playbackState,
+      playbackMode,
+      playbackDetail,
+    });
+
+    if (nextExternalKey !== externalSurfaceBridge.lastKey) {
+      externalSurfaceBridge.lastKey = nextExternalKey;
+      reloadExternalSurfaces();
+    }
   }, [
     playbackSource.input,
     sourceTitle,
-    ownerName,
-    sourceCover,
-    tracks,
+    tracks.length,
     currentTrack?.id,
     currentIndex,
     playbackState,
     playbackMode,
     playbackDetail,
+    playbackSnapshot.updatedAt,
   ]);
 
   useEffect(() => {

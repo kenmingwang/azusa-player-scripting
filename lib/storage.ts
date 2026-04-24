@@ -631,6 +631,8 @@ export function loadState(): PersistedState {
     nextState.sourceTitle =
       immediateSnapshot.sourceTitle ?? nextState.sourceTitle;
     nextState.lastInput = immediateSnapshot.source.input ?? nextState.lastInput;
+    nextState.playbackMode =
+      immediateSnapshot.playbackMode ?? nextState.playbackMode;
   }
 
   return nextState;
@@ -1041,6 +1043,39 @@ export function persistPlayerState(input: {
           : input.playbackSnapshot,
       playlistLibrary: nextLibrary,
     };
+  });
+}
+
+export function persistPlaybackSnapshot(input: {
+  sourceDescriptor?: SourceDescriptor;
+  sourceTitle?: string;
+  playbackMode?: PlaybackMode;
+  currentTrackId?: string;
+  playbackSnapshot?: PlaybackSnapshot | null;
+}) {
+  const current = loadState();
+  const playbackSnapshot =
+    input.playbackSnapshot === undefined
+      ? current.playbackSnapshot
+      : input.playbackSnapshot;
+
+  if (input.playbackSnapshot !== undefined) {
+    saveImmediatePlaybackSnapshot(playbackSnapshot);
+  }
+
+  return normalizeState({
+    ...current,
+    lastInput: input.sourceDescriptor?.input ?? current.lastInput,
+    playbackMode:
+      input.playbackMode ??
+      playbackSnapshot?.playbackMode ??
+      current.playbackMode,
+    sourceDescriptor:
+      input.sourceDescriptor ?? playbackSnapshot?.source ?? current.sourceDescriptor,
+    sourceTitle:
+      input.sourceTitle ?? playbackSnapshot?.sourceTitle ?? current.sourceTitle,
+    currentTrackId: input.currentTrackId ?? playbackSnapshot?.currentTrack?.id,
+    playbackSnapshot,
   });
 }
 
