@@ -39,7 +39,11 @@ export function liveCurrentTime(
   nowMs = Date.now(),
 ) {
   if (progress.isRunning && typeof progress.timerFrom === "number") {
-    return Math.max(0, (nowMs - progress.timerFrom) / 1000);
+    return Math.max(
+      0,
+      progress.currentTime || 0,
+      (nowMs - progress.timerFrom) / 1000,
+    );
   }
 
   return Math.max(0, progress.currentTime || 0);
@@ -74,5 +78,8 @@ export function usePlaybackClock(
     };
   }, [progress.isRunning, progress.timerFrom, intervalMs]);
 
-  return liveCurrentTime(progress, now);
+  return liveCurrentTime(
+    progress,
+    progress.isRunning ? Math.max(now, Date.now()) : now,
+  );
 }
