@@ -11,6 +11,14 @@ const clearIntervalApi =
   typeof globalRuntime.clearInterval === "function"
     ? globalRuntime.clearInterval.bind(globalRuntime)
     : null;
+const setTimeoutApi =
+  typeof globalRuntime.setTimeout === "function"
+    ? globalRuntime.setTimeout.bind(globalRuntime)
+    : null;
+const clearTimeoutApi =
+  typeof globalRuntime.clearTimeout === "function"
+    ? globalRuntime.clearTimeout.bind(globalRuntime)
+    : null;
 
 type ProgressSource = {
   getProgressSnapshot: () => PlaybackProgressSnapshot;
@@ -56,24 +64,37 @@ export function usePlaybackClock(
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (
-      !setIntervalApi ||
-      !progress.isRunning ||
-      typeof progress.timerFrom !== "number"
-    ) {
+    if (!progress.isRunning || typeof progress.timerFrom !== "number") {
       return;
     }
 
+    let disposed = false;
+    let timeout: number | undefined;
+    let interval: number | undefined;
     const sync = () => {
+      if (disposed) {
+        return;
+      }
+
       setNow(Date.now());
+
+      if (setTimeoutApi) {
+        timeout = setTimeoutApi(sync, intervalMs) as unknown as number;
+      }
     };
 
     sync();
-    const timer = setIntervalApi(sync, intervalMs) as unknown as number;
+    if (!setTimeoutApi && setIntervalApi) {
+      interval = setIntervalApi(sync, intervalMs) as unknown as number;
+    }
 
     return () => {
-      if (clearIntervalApi) {
-        clearIntervalApi(timer);
+      disposed = true;
+      if (timeout != null && clearTimeoutApi) {
+        clearTimeoutApi(timeout);
+      }
+      if (interval != null && clearIntervalApi) {
+        clearIntervalApi(interval);
       }
     };
   }, [progress.isRunning, progress.timerFrom, intervalMs]);

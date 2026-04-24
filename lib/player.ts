@@ -43,6 +43,14 @@ const clearIntervalApi =
   typeof globalRuntime.clearInterval === "function"
     ? globalRuntime.clearInterval.bind(globalRuntime)
     : null;
+const setTimeoutApi =
+  typeof globalRuntime.setTimeout === "function"
+    ? globalRuntime.setTimeout.bind(globalRuntime)
+    : null;
+const clearTimeoutApi =
+  typeof globalRuntime.clearTimeout === "function"
+    ? globalRuntime.clearTimeout.bind(globalRuntime)
+    : null;
 
 const hasNativeAudioPlayer = () => typeof AVPlayerCtor === "function";
 
@@ -588,10 +596,15 @@ class AzusaScriptingPlayer {
 
   private startTicker() {
     this.stopTicker();
-    if (!setIntervalApi) {
+    if (!setTimeoutApi && !setIntervalApi) {
       return;
     }
-    this.updateTimer = setIntervalApi(() => {
+
+    const tick = () => {
+      if (this.playbackState !== "playing") {
+        return;
+      }
+
       const snapshot = this.getProgressSnapshot();
       this.emitProgress();
 
@@ -600,11 +613,25 @@ class AzusaScriptingPlayer {
         this.lastNowPlayingSecond = currentSecond;
         this.updateNowPlaying();
       }
-    }, 1000) as unknown as number;
+
+      if (setTimeoutApi) {
+        this.updateTimer = setTimeoutApi(tick, 1000) as unknown as number;
+      }
+    };
+
+    if (setTimeoutApi) {
+      this.updateTimer = setTimeoutApi(tick, 1000) as unknown as number;
+      return;
+    }
+
+    this.updateTimer = setIntervalApi(tick, 1000) as unknown as number;
   }
 
   private stopTicker() {
     if (this.updateTimer) {
+      if (clearTimeoutApi) {
+        clearTimeoutApi(this.updateTimer);
+      }
       if (clearIntervalApi) {
         clearIntervalApi(this.updateTimer);
       }
