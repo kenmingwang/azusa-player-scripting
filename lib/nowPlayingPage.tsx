@@ -2,7 +2,6 @@ import {
   HStack,
   List,
   NavigationLink,
-  ProgressView,
   Section,
   Spacer,
   Text,
@@ -109,11 +108,6 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
       ? "已导入同步歌词"
       : "已导入文本歌词"
     : "还没有歌词";
-  const progressValue =
-    duration > 0
-      ? Math.max(0, Math.min(liveTime, duration))
-      : undefined;
-
   return (
     <List
       navigationTitle={"正在播放"}
