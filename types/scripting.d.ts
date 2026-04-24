@@ -35,6 +35,7 @@ declare module "scripting" {
   export const Path: any;
   export const ScrollView: any;
   export const LazyVStack: any;
+  export const ForEach: any;
   export const FileManager: any;
   export const Storage: any;
   export const BackgroundURLSession: any;
@@ -45,8 +46,18 @@ declare module "scripting" {
   export const TimeControlStatus: any;
   export const useEffect: any;
   export const useMemo: any;
+  export const useObservable: any;
   export const useState: any;
   export const Widget: any;
+
+  export class Observable<T> {
+    constructor(initialValue: T);
+    value: T;
+    setValue(value: T): void;
+    subscribe(callback: (value: T, oldValue: T) => void): void;
+    unsubscribe(callback: (value: T, oldValue: T) => void): void;
+    dispose(): void;
+  }
 }
 
 declare function setInterval(
