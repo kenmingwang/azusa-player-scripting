@@ -36,6 +36,12 @@ import {
   getSharedPlayer,
 } from "./player";
 import { PlaybackProgressView } from "./playbackProgressView";
+import { PaginatedTrackList } from "./paginatedTrackList";
+import {
+  buildPaginatedTrackState,
+  clampPage,
+  pageForTrackIndex,
+} from "./paginatedTracks";
 import { usePlaybackClock, usePlayerProgress } from "./usePlayerProgress";
 import { SourceLibraryPage } from "./sourceLibraryPage";
 import {
@@ -328,27 +334,42 @@ type QueueToolsPageProps = QueueManagementPageProps;
 
 function QueueSearchPage(props: QueueToolsPageProps) {
   const [queueQuery, setQueueQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
   const tracks = props.tracks;
-  const normalizedQueueQuery = queueQuery.trim().toLowerCase();
-
+  const pageState = useMemo(
+    () =>
+      buildPaginatedTrackState({
+        tracks,
+        query: queueQuery,
+        page,
+        currentIndex: props.currentIndex,
+      }),
+    [tracks, queueQuery, page, props.currentIndex],
+  );
   const filteredTracks = useMemo(
     () =>
-      tracks
-        .map((track, index) => ({ track, index }))
-        .filter(({ track }) => {
-          if (!normalizedQueueQuery) {
-            return true;
-          }
-
-          return [
-            track.title,
-            track.artist,
-            track.sourceTitle,
-            track.cid,
-          ].some((value) => value.toLowerCase().includes(normalizedQueueQuery));
-        }),
-    [tracks, normalizedQueueQuery],
+      pageState.rows.map((row) => ({
+        track: row.track,
+        index: row.index,
+        displayIndex: row.displayIndex,
+        isActive: row.isActive,
+        rowId: row.id,
+      })),
+    [pageState.rows],
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [queueQuery, tracks]);
+
+  useEffect(() => {
+    setPageInput(String(pageState.page));
+  }, [pageState.page]);
+
+  function jumpToPage(nextPage: number) {
+    setPage(clampPage(nextPage, pageState.totalPages));
+  }
 
   return (
     <ScrollView
@@ -370,6 +391,35 @@ function QueueSearchPage(props: QueueToolsPageProps) {
           </Text>
         </VStack>
 
+        <HStack spacing={8}>
+          <Button
+            title="Prev"
+            buttonStyle="bordered"
+            action={() => jumpToPage(pageState.page - 1)}
+          />
+          <Button
+            title="Next"
+            buttonStyle="bordered"
+            action={() => jumpToPage(pageState.page + 1)}
+          />
+          <TextField
+            title="Page"
+            placeholder="Page"
+            value={pageInput}
+            onChanged={setPageInput}
+          />
+          <Button
+            title="Go"
+            buttonStyle="bordered"
+            action={() => jumpToPage(Number.parseInt(pageInput, 10))}
+          />
+        </HStack>
+
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          Page {pageState.page}/{pageState.totalPages} · showing{" "}
+          {pageState.startResult}-{pageState.endResult} / {pageState.resultCount}
+        </Text>
+
         <VStack alignment={"leading"} spacing={12}>
           <Text font={"caption"} foregroundColor={"secondary"}>
             歌曲列表
@@ -390,18 +440,17 @@ function QueueSearchPage(props: QueueToolsPageProps) {
           </VStack>
         ) : (
           <LazyVStack alignment={"leading"} spacing={12}>
-          {filteredTracks.map(({ track, index }) => {
-            const isActive = props.currentIndex === index;
+          {filteredTracks.map(({ track, index, displayIndex, isActive, rowId }) => {
             const displayTitle = displayTrackTitle(track, props.sourceTitle);
 
             return (
               <Button
                 action={() => void props.onPlayTrackAt(index)}
-                key={track.id}>
+                key={rowId}>
                   <HStack spacing={12}>
                     <VStack alignment={"leading"} spacing={4}>
                       <Text font={isActive ? "headline" : "body"}>
-                        {index + 1}. {displayTitle}
+                        {displayIndex}. {displayTitle}
                       </Text>
                       <Text font={"caption"} foregroundColor={"secondary"}>
                         {track.artist}
@@ -659,6 +708,42 @@ function QueueToolsPage(props: QueueToolsPageProps) {
 
 function QueueManagementPage(props: QueueManagementPageProps) {
   const tracks = props.tracks;
+  const [page, setPage] = useState(pageForTrackIndex(props.currentIndex));
+  const [pageInput, setPageInput] = useState(String(page));
+  const pageState = useMemo(
+    () =>
+      buildPaginatedTrackState({
+        tracks,
+        page,
+        currentIndex: props.currentIndex,
+      }),
+    [tracks, page, props.currentIndex],
+  );
+  const visibleTracks = useMemo(
+    () =>
+      pageState.rows.map((row) => ({
+        track: row.track,
+        index: row.index,
+        displayIndex: row.displayIndex,
+        isActive: row.isActive,
+        rowId: row.id,
+      })),
+    [pageState.rows],
+  );
+
+  useEffect(() => {
+    if (props.currentIndex >= 0) {
+      setPage(pageForTrackIndex(props.currentIndex));
+    }
+  }, [props.currentIndex]);
+
+  useEffect(() => {
+    setPageInput(String(pageState.page));
+  }, [pageState.page]);
+
+  function jumpToPage(nextPage: number) {
+    setPage(clampPage(nextPage, pageState.totalPages));
+  }
 
   return (
     <ScrollView
@@ -707,6 +792,35 @@ function QueueManagementPage(props: QueueManagementPageProps) {
           </HStack>
         </VStack>
 
+        <HStack spacing={8}>
+          <Button
+            title="Prev"
+            buttonStyle="bordered"
+            action={() => jumpToPage(pageState.page - 1)}
+          />
+          <Button
+            title="Next"
+            buttonStyle="bordered"
+            action={() => jumpToPage(pageState.page + 1)}
+          />
+          <TextField
+            title="Page"
+            placeholder="Page"
+            value={pageInput}
+            onChanged={setPageInput}
+          />
+          <Button
+            title="Go"
+            buttonStyle="bordered"
+            action={() => jumpToPage(Number.parseInt(pageInput, 10))}
+          />
+        </HStack>
+
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          Page {pageState.page}/{pageState.totalPages} · showing{" "}
+          {pageState.startResult}-{pageState.endResult} / {pageState.resultCount}
+        </Text>
+
         <VStack alignment={"leading"} spacing={12}>
           <Text font={"caption"} foregroundColor={"secondary"}>
             歌曲列表
@@ -720,16 +834,15 @@ function QueueManagementPage(props: QueueManagementPageProps) {
             </VStack>
           ) : (
             <LazyVStack alignment={"leading"} spacing={12}>
-              {tracks.map((track, index) => {
-                const isActive = props.currentIndex === index;
+              {visibleTracks.map(({ track, index, displayIndex, isActive, rowId }) => {
                 const displayTitle = displayTrackTitle(track, props.sourceTitle);
 
                 return (
-                  <Button key={track.id} action={() => void props.onPlayTrackAt(index)}>
+                  <Button key={rowId} action={() => void props.onPlayTrackAt(index)}>
                     <HStack spacing={12}>
                       <VStack alignment={"leading"} spacing={4}>
                         <Text font={isActive ? "headline" : "body"}>
-                          {index + 1}. {displayTitle}
+                          {displayIndex}. {displayTitle}
                         </Text>
                         <Text font={"caption"} foregroundColor={"secondary"}>
                           {track.artist} · CID {track.cid}
