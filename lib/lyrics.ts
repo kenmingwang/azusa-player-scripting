@@ -140,20 +140,24 @@ export function activeLyricLineIndex(
   }
 
   let activeIndex = -1;
-  for (let index = 0; index < lyrics.lines.length; index += 1) {
-    const line = lyrics.lines[index];
-    if (typeof line.timeSeconds !== "number") {
-      continue;
+  let low = 0;
+  let high = lyrics.lines.length - 1;
+  const targetTime = currentTimeSeconds + 0.15;
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const line = lyrics.lines[middle];
+    const effectiveLineTime =
+      typeof line.timeSeconds === "number"
+        ? line.timeSeconds + lyrics.offsetMs / 1000
+        : Number.POSITIVE_INFINITY;
+
+    if (effectiveLineTime <= targetTime) {
+      activeIndex = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
     }
-
-    const effectiveLineTime = line.timeSeconds + lyrics.offsetMs / 1000;
-
-    if (effectiveLineTime <= currentTimeSeconds + 0.15) {
-      activeIndex = index;
-      continue;
-    }
-
-    break;
   }
 
   return activeIndex;

@@ -22,9 +22,14 @@ import {
   TransportControls,
   playbackModeLabel,
 } from "./playbackControls";
-import { loadTrackLyrics } from "./storage";
+import { loadTrackLyricsEntry } from "./storage";
 import { usePlaybackClock, usePlayerProgress } from "./usePlayerProgress";
-import type { PlaybackMode, PlaybackUiState, Track } from "./types";
+import type {
+  PlaybackMode,
+  PlaybackUiState,
+  Track,
+  TrackLyricsEntry,
+} from "./types";
 
 type NowPlayingPageProps = {
   currentTrack: Track | null;
@@ -61,6 +66,14 @@ function displayTrackTitle(track: Track | null, sourceTitle: string) {
     : track.title;
 }
 
+function trackStorageInput(track: Track | null) {
+  return {
+    id: track?.id,
+    title: track?.title,
+    artist: track?.artist,
+  };
+}
+
 export function NowPlayingPage(props: NowPlayingPageProps) {
   const player = getSharedPlayer();
   const progress = usePlayerProgress(player);
@@ -69,17 +82,27 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
   const duration = progress.duration || props.currentTrack?.durationSeconds || 0;
   const progressText = `${formatDuration(liveTime)} / ${formatDuration(duration)}`;
   const displayTitle = displayTrackTitle(props.currentTrack, props.sourceTitle);
-  const rawLyrics = props.currentTrack
-    ? loadTrackLyrics({
-        id: props.currentTrack.id,
-        title: props.currentTrack.title,
-        artist: props.currentTrack.artist,
-      })
-    : "";
+  const [lyricsEntry, setLyricsEntry] = useState(
+    (props.currentTrack
+      ? loadTrackLyricsEntry(trackStorageInput(props.currentTrack))
+      : null) as TrackLyricsEntry | null,
+  );
+  const rawLyrics = lyricsEntry?.rawLyric ?? "";
+
+  useEffect(() => {
+    if (!props.currentTrack) {
+      setLyricsEntry(null);
+      return;
+    }
+
+    setLyricsEntry(loadTrackLyricsEntry(trackStorageInput(props.currentTrack)));
+  }, [props.currentTrack?.id]);
+
   const parsedLyrics = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
+  const lyricTime = Math.max(0, liveTime + (lyricsEntry?.offsetMs ?? 0) / 1000);
   const currentLyric = useMemo(
-    () => activeLyricLine(parsedLyrics, liveTime),
-    [parsedLyrics, liveTime],
+    () => activeLyricLine(parsedLyrics, lyricTime),
+    [parsedLyrics, lyricTime],
   );
   const lyricStatus = parsedLyrics.lines.length
     ? parsedLyrics.timed
@@ -174,7 +197,13 @@ export function NowPlayingPage(props: NowPlayingPageProps) {
             {currentLyric?.text ||
               "进入歌词页后查看跟随歌词，再从工具页搜索 QQ 候选或导入 `.lrc` / `.txt`。"}
           </Text>
-          <NavigationLink destination={<LyricsPage track={props.currentTrack} />}>
+          <NavigationLink
+            destination={
+              <LyricsPage
+                track={props.currentTrack}
+                onLyricsEntryChange={setLyricsEntry}
+              />
+            }>
             <HStack spacing={12}>
               <VStack alignment={"leading"} spacing={3}>
                 <Text font={"body"}>打开歌词页</Text>

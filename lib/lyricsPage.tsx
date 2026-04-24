@@ -39,6 +39,7 @@ import type { LyricSearchOption, Track, TrackLyricsEntry } from "./types";
 
 type LyricsPageProps = {
   track: Track | null;
+  onLyricsEntryChange?: (entry: TrackLyricsEntry | null) => void;
 };
 
 type LyricsFollowPageProps = {
@@ -633,13 +634,18 @@ export function LyricsPage(props: LyricsPageProps) {
     setRawLyrics(nextEntry?.rawLyric ?? "");
   }, [props.track?.id]);
 
+  function handleLyricsEntryChange(entry: TrackLyricsEntry | null) {
+    setLyricsEntry(entry);
+    props.onLyricsEntryChange?.(entry);
+  }
+
   return (
     <LyricsFollowPage
       player={player}
       track={props.track}
       rawLyrics={rawLyrics}
       lyricsEntry={lyricsEntry}
-      onLyricsEntryChange={setLyricsEntry}
+      onLyricsEntryChange={handleLyricsEntryChange}
       onRawLyricsChange={setRawLyrics}
     />
   );
