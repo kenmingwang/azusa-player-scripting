@@ -77,6 +77,7 @@ class AzusaScriptingPlayer {
   private sourceAttemptIndex = 0;
   private sourceRefreshCount = 0;
   private lastSourceDebug = "";
+  private attemptedSourceUrls: string[] = [];
   private localFallbackAttemptedTrackId?: string;
   private playbackMode: PlaybackMode = "normal";
   private playbackState: PlaybackUiState = "idle";
@@ -231,6 +232,7 @@ class AzusaScriptingPlayer {
     this.currentIndex = index;
     this.progressTrackId = this.queue[index]?.id;
     this.localFallbackAttemptedTrackId = undefined;
+    this.attemptedSourceUrls = [];
     this.progressAnchorTime = 0;
     this.progressAnchorAt = 0;
     this.bindings.onCurrentTrackChange?.(this.queue[index], this.currentIndex);
@@ -315,6 +317,7 @@ class AzusaScriptingPlayer {
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
     this.lastSourceDebug = "";
+    this.attemptedSourceUrls = [];
     this.localFallbackAttemptedTrackId = undefined;
     this.stopTicker();
     this.emitState("paused");
@@ -340,6 +343,7 @@ class AzusaScriptingPlayer {
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
     this.lastSourceDebug = "";
+    this.attemptedSourceUrls = [];
     this.localFallbackAttemptedTrackId = undefined;
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
@@ -438,6 +442,7 @@ class AzusaScriptingPlayer {
         source ? this.streamRequestHeaders(source) : undefined,
         probe,
       ),
+      this.describeAttemptedSourceUrls(),
     ]
       .filter(Boolean)
       .join(" | ");
@@ -493,6 +498,7 @@ class AzusaScriptingPlayer {
     this.sourceAttemptIndex = 0;
     if (resetRefreshCount) {
       this.sourceRefreshCount = 0;
+      this.attemptedSourceUrls = [];
     }
     return this.tryLoadCurrentSourceCandidate();
   }
@@ -522,6 +528,7 @@ class AzusaScriptingPlayer {
         ? this.streamRequestHeaders(source)
         : undefined;
     this.lastSourceDebug = this.describeCurrentSource(source, headers);
+    this.recordAttemptedSource(source, headers);
 
     const attempts = headers
       ? [
@@ -570,6 +577,30 @@ class AzusaScriptingPlayer {
     ]
       .filter(Boolean)
       .join(" · ");
+  }
+
+  private recordAttemptedSource(
+    source: string,
+    headers?: Record<string, string>,
+  ) {
+    if (this.attemptedSourceUrls.some((item) => item.includes(source))) {
+      return;
+    }
+
+    const headerInfo = headers
+      ? `Referer=${headers.Referer ?? "none"} UA=${headers["User-Agent"] ? "yes" : "no"}`
+      : "local";
+    this.attemptedSourceUrls.push(
+      `${this.attemptedSourceUrls.length + 1}. ${source} (${headerInfo})`,
+    );
+  }
+
+  private describeAttemptedSourceUrls() {
+    if (!this.attemptedSourceUrls.length) {
+      return "";
+    }
+
+    return `tried urls ${this.attemptedSourceUrls.join(" || ")}`;
   }
 
   private hostFromUrl(rawUrl: string) {

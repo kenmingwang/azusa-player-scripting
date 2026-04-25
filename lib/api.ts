@@ -616,7 +616,8 @@ function refererForUrl(rawUrl?: string) {
       host.endsWith("bilibili.com") ||
       host.endsWith("bilivideo.com") ||
       host.endsWith("bilivideo.cn") ||
-      host.endsWith("hdslb.com")
+      host.endsWith("hdslb.com") ||
+      host.endsWith("akamaized.net")
     ) {
       return "https://www.bilibili.com/";
     }
