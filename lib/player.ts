@@ -75,6 +75,7 @@ class AzusaScriptingPlayer {
   private sourceCandidates: string[] = [];
   private sourceAttemptIndex = 0;
   private sourceRefreshCount = 0;
+  private lastSourceDebug = "";
   private playbackMode: PlaybackMode = "normal";
   private playbackState: PlaybackUiState = "idle";
   private playbackDetail = "";
@@ -242,7 +243,9 @@ class AzusaScriptingPlayer {
     this.bindings.onQueueChange?.([...this.queue]);
 
     if (!this.loadPreparedTrack(track)) {
-      throw new Error("播放器无法装载音频源");
+      throw new Error(
+        `播放器无法装载音频源${this.lastSourceDebug ? `：${this.lastSourceDebug}` : ""}`,
+      );
     }
 
     this.player!.onReadyToPlay = () => {
@@ -308,6 +311,7 @@ class AzusaScriptingPlayer {
     this.sourceCandidates = [];
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
+    this.lastSourceDebug = "";
     this.stopTicker();
     this.emitState("paused");
     this.emitProgress(true);
@@ -331,6 +335,7 @@ class AzusaScriptingPlayer {
     this.sourceCandidates = [];
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
+    this.lastSourceDebug = "";
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
@@ -419,8 +424,21 @@ class AzusaScriptingPlayer {
       return;
     }
 
-    this.emitState("error", message);
-    this.bindings.onError?.(message);
+    const probe = await this.probeCurrentSourceAccess();
+    const source = this.currentSource();
+    const detail = [
+      message,
+      this.describeCurrentSource(
+        source,
+        source ? this.streamRequestHeaders(source) : undefined,
+        probe,
+      ),
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    this.emitState("error", detail);
+    this.bindings.onError?.(detail);
   }
 
   private async handleTrackEnded() {
@@ -482,7 +500,7 @@ class AzusaScriptingPlayer {
     while (this.sourceAttemptIndex < this.sourceCandidates.length) {
       const source = this.sourceCandidates[this.sourceAttemptIndex];
       this.player.stop();
-      const ready = this.player.setSource(source);
+      const ready = this.setSourceWithHeaders(source);
       if (ready) {
         this.loadedTrackId = this.activeTrackId;
         return true;
@@ -491,6 +509,105 @@ class AzusaScriptingPlayer {
     }
 
     return false;
+  }
+
+  private setSourceWithHeaders(source: string) {
+    const headers =
+      source.startsWith("http://") || source.startsWith("https://")
+        ? this.streamRequestHeaders(source)
+        : undefined;
+    this.lastSourceDebug = this.describeCurrentSource(source, headers);
+
+    const attempts = headers
+      ? [
+          () => this.player!.setSource(source, { headers }),
+          () => this.player!.setSource({ url: source, headers }),
+          () => this.player!.setSource(source),
+        ]
+      : [() => this.player!.setSource(source)];
+
+    for (const attempt of attempts) {
+      try {
+        if (attempt()) {
+          return true;
+        }
+      } catch (error) {
+        this.lastSourceDebug = `${this.describeCurrentSource(source, headers)} · setSource ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+      }
+    }
+
+    return false;
+  }
+
+  private describeCurrentSource(
+    source: string,
+    headers?: Record<string, string>,
+    probe?: string,
+  ) {
+    const currentTrack = this.getCurrentTrack();
+    const host = source.startsWith("http") ? this.hostFromUrl(source) : "local";
+    const headerInfo = headers
+      ? `headers Referer=${headers.Referer ? "yes" : "no"} UA=${headers["User-Agent"] ? "yes" : "no"}`
+      : "local file";
+    const attempt = `${this.sourceAttemptIndex + 1}/${Math.max(this.sourceCandidates.length, 1)}`;
+    const trackInfo = currentTrack
+      ? `${currentTrack.bvid}/${currentTrack.cid}`
+      : "unknown track";
+
+    return [
+      `track ${trackInfo}`,
+      `line ${attempt}`,
+      `host ${host}`,
+      headerInfo,
+      probe,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  private hostFromUrl(rawUrl: string) {
+    try {
+      return new URL(rawUrl).hostname;
+    } catch {
+      return rawUrl.slice(0, 80);
+    }
+  }
+
+  private currentSource() {
+    return this.sourceCandidates[this.sourceAttemptIndex] ?? "";
+  }
+
+  private async probeCurrentSourceAccess() {
+    const source = this.currentSource();
+    if (!source.startsWith("http://") && !source.startsWith("https://")) {
+      return "";
+    }
+
+    try {
+      const response = await fetch(source, {
+        method: "HEAD",
+        headers: this.streamRequestHeaders(source),
+        timeout: 10,
+        debugLabel: `StreamProbe ${this.hostFromUrl(source)}`,
+      } as any);
+      return `probe ${response.status}`;
+    } catch (error) {
+      return `probe ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  private streamRequestHeaders(source: string) {
+    const currentTrack = this.getCurrentTrack();
+    const referer = currentTrack?.bvid
+      ? `https://www.bilibili.com/video/${currentTrack.bvid}`
+      : undefined;
+
+    return requestHeaders(source, {
+      Referer: referer,
+      Origin: referer ? "https://www.bilibili.com" : undefined,
+    });
   }
 
   private resolveManualSkipIndex(delta: number) {
