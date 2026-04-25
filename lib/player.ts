@@ -9,6 +9,7 @@ import {
 } from "scripting";
 
 import { requestHeaders, resolveTrackStream } from "./api";
+import { rememberDownload } from "./storage";
 import type {
   PlaybackMode,
   PlaybackProgressSnapshot,
@@ -76,6 +77,7 @@ class AzusaScriptingPlayer {
   private sourceAttemptIndex = 0;
   private sourceRefreshCount = 0;
   private lastSourceDebug = "";
+  private localFallbackAttemptedTrackId?: string;
   private playbackMode: PlaybackMode = "normal";
   private playbackState: PlaybackUiState = "idle";
   private playbackDetail = "";
@@ -228,6 +230,7 @@ class AzusaScriptingPlayer {
     this.shouldBePlaying = true;
     this.currentIndex = index;
     this.progressTrackId = this.queue[index]?.id;
+    this.localFallbackAttemptedTrackId = undefined;
     this.progressAnchorTime = 0;
     this.progressAnchorAt = 0;
     this.bindings.onCurrentTrackChange?.(this.queue[index], this.currentIndex);
@@ -242,7 +245,7 @@ class AzusaScriptingPlayer {
     this.queue[index] = track;
     this.bindings.onQueueChange?.([...this.queue]);
 
-    if (!this.loadPreparedTrack(track)) {
+    if (!this.loadPreparedTrack(track) && !(await this.tryLoadCurrentSourceViaLocalCache(track))) {
       throw new Error(
         `播放器无法装载音频源${this.lastSourceDebug ? `：${this.lastSourceDebug}` : ""}`,
       );
@@ -312,6 +315,7 @@ class AzusaScriptingPlayer {
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
     this.lastSourceDebug = "";
+    this.localFallbackAttemptedTrackId = undefined;
     this.stopTicker();
     this.emitState("paused");
     this.emitProgress(true);
@@ -336,6 +340,7 @@ class AzusaScriptingPlayer {
     this.sourceAttemptIndex = 0;
     this.sourceRefreshCount = 0;
     this.lastSourceDebug = "";
+    this.localFallbackAttemptedTrackId = undefined;
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
@@ -576,7 +581,11 @@ class AzusaScriptingPlayer {
   }
 
   private currentSource() {
-    return this.sourceCandidates[this.sourceAttemptIndex] ?? "";
+    return (
+      this.sourceCandidates[this.sourceAttemptIndex] ??
+      this.sourceCandidates[Math.max(0, this.sourceCandidates.length - 1)] ??
+      ""
+    );
   }
 
   private async probeCurrentSourceAccess() {
@@ -689,6 +698,10 @@ class AzusaScriptingPlayer {
       return this.tryLoadCurrentSourceCandidate();
     }
 
+    if (await this.tryLoadCurrentSourceViaLocalCache(currentTrack)) {
+      return true;
+    }
+
     const canRefreshRemoteStream =
       !(currentTrack.localFilePath && FileManager.existsSync(currentTrack.localFilePath)) &&
       this.sourceRefreshCount < 1;
@@ -704,11 +717,135 @@ class AzusaScriptingPlayer {
       const refreshedTrack = await this.prepareTrackForPlayback(currentTrack, true);
       this.queue[this.currentIndex] = refreshedTrack;
       this.bindings.onQueueChange?.([...this.queue]);
-      return this.loadPreparedTrack(refreshedTrack, false);
+      return (
+        this.loadPreparedTrack(refreshedTrack, false) ||
+        (await this.tryLoadCurrentSourceViaLocalCache(refreshedTrack))
+      );
     } catch (error) {
       this.playbackDetail = error instanceof Error ? error.message : String(error);
       return false;
     }
+  }
+
+  private async tryLoadCurrentSourceViaLocalCache(track: Track) {
+    if (!this.player || this.localFallbackAttemptedTrackId === track.id) {
+      return false;
+    }
+
+    const source = this.currentSource();
+    if (!source.startsWith("http://") && !source.startsWith("https://")) {
+      return false;
+    }
+
+    this.localFallbackAttemptedTrackId = track.id;
+    this.emitState("loading", "远程音频被系统拒绝，正在缓存到本地播放");
+
+    try {
+      const localFilePath = await this.cacheRemoteAudioSource(track, source);
+      const cachedTrack = { ...track, localFilePath };
+      this.queue[this.currentIndex] = cachedTrack;
+      rememberDownload(track.id, localFilePath);
+      this.bindings.onQueueChange?.([...this.queue]);
+      this.bindings.onCurrentTrackChange?.(cachedTrack, this.currentIndex);
+      this.sourceCandidates = [localFilePath];
+      this.sourceAttemptIndex = 0;
+      this.lastSourceDebug = `local fallback ${localFilePath}`;
+      return this.tryLoadCurrentSourceCandidate();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lastSourceDebug = `${this.describeCurrentSource(
+        source,
+        this.streamRequestHeaders(source),
+      )} 路 local fallback ${message}`;
+      return false;
+    }
+  }
+
+  private async cacheRemoteAudioSource(track: Track, source: string) {
+    const response = await fetch(source, {
+      headers: this.streamRequestHeaders(source),
+      timeout: 90,
+      debugLabel: `StreamCache ${track.bvid}/${track.cid}`,
+    } as any);
+
+    if (!response.ok) {
+      throw new Error(`download ${response.status}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    const data = DataApi?.fromArrayBuffer?.(buffer) ?? buffer;
+    const localFilePath = this.localCachePathForTrack(track, source);
+    await this.writeAudioCacheFile(localFilePath, data, buffer);
+    return localFilePath;
+  }
+
+  private localCachePathForTrack(track: Track, source: string) {
+    const baseDirectory =
+      this.resolveFileManagerValue(FileManager.temporaryDirectory) ??
+      this.resolveFileManagerValue(FileManager.cacheDirectory) ??
+      this.resolveFileManagerValue(FileManager.cachesDirectory) ??
+      this.resolveFileManagerValue(FileManager.documentsDirectory) ??
+      this.resolveFileManagerValue(FileManager.documentDirectory) ??
+      globalRuntime.temporaryDirectory ??
+      globalRuntime.cacheDirectory ??
+      globalRuntime.documentsDirectory ??
+      "";
+    const directory = String(baseDirectory || "").replace(/[\\/]+$/, "");
+    const safeId = track.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const extension = this.extensionFromSource(source);
+    return directory
+      ? `${directory}/azusa-stream-${safeId}.${extension}`
+      : `azusa-stream-${safeId}.${extension}`;
+  }
+
+  private extensionFromSource(source: string) {
+    try {
+      const pathname = new URL(source).pathname.toLowerCase();
+      const match = pathname.match(/\.([a-z0-9]{2,5})(?:$|[?#])/);
+      if (match?.[1]) {
+        return match[1];
+      }
+    } catch {}
+
+    return "m4a";
+  }
+
+  private resolveFileManagerValue(value: unknown) {
+    if (typeof value === "function") {
+      try {
+        return value();
+      } catch {
+        return undefined;
+      }
+    }
+
+    return value;
+  }
+
+  private async writeAudioCacheFile(
+    localFilePath: string,
+    data: unknown,
+    buffer: ArrayBuffer,
+  ) {
+    const manager = FileManager as any;
+    const attempts = [
+      () => manager.writeAsData?.(localFilePath, data),
+      () => manager.writeData?.(localFilePath, data),
+      () => manager.write?.(localFilePath, data),
+      () => manager.writeFile?.(localFilePath, data),
+      () => manager.writeAsBytes?.(localFilePath, Array.from(new Uint8Array(buffer))),
+    ];
+
+    for (const attempt of attempts) {
+      try {
+        const result = await attempt();
+        if (result !== undefined || manager.existsSync?.(localFilePath)) {
+          return;
+        }
+      } catch {}
+    }
+
+    throw new Error("FileManager write API unavailable");
   }
 
   private startTicker() {
