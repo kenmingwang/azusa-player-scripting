@@ -53,6 +53,8 @@ const clearTimeoutApi =
     ? globalRuntime.clearTimeout.bind(globalRuntime)
     : null;
 
+const STREAM_DIAGNOSTIC_VERSION = "stream-diagnostic-2026-04-25.1";
+
 const hasNativeAudioPlayer = () => typeof AVPlayerCtor === "function";
 
 const mapStatus = (status: any): PlaybackUiState => {
@@ -465,10 +467,30 @@ class AzusaScriptingPlayer {
         ? this.streamRequestHeaders(source)
         : undefined;
     console.log?.("[azusa-player][playback-ready]", {
+      diagnosticVersion: STREAM_DIAGNOSTIC_VERSION,
       track: this.getCurrentTrack(),
       source,
       sourceSummary: this.summarizeSource(source),
       headers,
+      headerKeys: headers ? Object.keys(headers) : [],
+      headerDump: this.headerDump(headers),
+      attemptedSourceUrls: this.attemptedSourceUrls,
+    });
+  }
+
+  private logSourceAccepted(source: string) {
+    const headers =
+      source.startsWith("http://") || source.startsWith("https://")
+        ? this.streamRequestHeaders(source)
+        : undefined;
+    console.log?.("[azusa-player][source-accepted]", {
+      diagnosticVersion: STREAM_DIAGNOSTIC_VERSION,
+      track: this.getCurrentTrack(),
+      source,
+      sourceSummary: this.summarizeSource(source),
+      headers,
+      headerKeys: headers ? Object.keys(headers) : [],
+      headerDump: this.headerDump(headers),
       attemptedSourceUrls: this.attemptedSourceUrls,
     });
   }
@@ -536,6 +558,7 @@ class AzusaScriptingPlayer {
       const ready = this.setSourceWithHeaders(source);
       if (ready) {
         this.loadedTrackId = this.activeTrackId;
+        this.logSourceAccepted(source);
         return true;
       }
       this.sourceAttemptIndex += 1;
@@ -618,9 +641,12 @@ class AzusaScriptingPlayer {
     );
 
     console.log?.("[azusa-player][audio-attempt]", {
+      diagnosticVersion: STREAM_DIAGNOSTIC_VERSION,
       index: this.attemptedSourceUrls.length,
       source,
       headers,
+      headerKeys: headers ? Object.keys(headers) : [],
+      headerDump: this.headerDump(headers),
     });
   }
 
@@ -663,6 +689,16 @@ class AzusaScriptingPlayer {
     }
 
     return `${value.slice(0, 33)}...`;
+  }
+
+  private headerDump(headers?: Record<string, string>) {
+    if (!headers) {
+      return "local";
+    }
+
+    return Object.entries(headers)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join("\n");
   }
 
   private hostFromUrl(rawUrl: string) {
