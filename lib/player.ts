@@ -255,6 +255,7 @@ class AzusaScriptingPlayer {
 
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
+      this.logPlaybackReady();
       this.shouldBePlaying = true;
       this.startProgressClock(this.readNativeCurrentTime());
       this.player!.play();
@@ -447,8 +448,29 @@ class AzusaScriptingPlayer {
       .filter(Boolean)
       .join(" | ");
 
+    console.log?.("[azusa-player][playback-error]", {
+      message,
+      detail,
+      currentSource: source,
+      attemptedSourceUrls: this.attemptedSourceUrls,
+    });
     this.emitState("error", detail);
     this.bindings.onError?.(detail);
+  }
+
+  private logPlaybackReady() {
+    const source = this.currentSource();
+    const headers =
+      source.startsWith("http://") || source.startsWith("https://")
+        ? this.streamRequestHeaders(source)
+        : undefined;
+    console.log?.("[azusa-player][playback-ready]", {
+      track: this.getCurrentTrack(),
+      source,
+      sourceSummary: this.summarizeSource(source),
+      headers,
+      attemptedSourceUrls: this.attemptedSourceUrls,
+    });
   }
 
   private async handleTrackEnded() {
@@ -665,17 +687,47 @@ class AzusaScriptingPlayer {
       return "";
     }
 
+    const headers = this.streamRequestHeaders(source);
+    const parts: string[] = [];
+
     try {
-      const response = await fetch(source, {
+      const headResponse = await fetch(source, {
         method: "HEAD",
-        headers: this.streamRequestHeaders(source),
+        headers,
         timeout: 10,
-        debugLabel: `StreamProbe ${this.hostFromUrl(source)}`,
+        debugLabel: `StreamProbeHead ${this.hostFromUrl(source)}`,
       } as any);
-      return `probe ${response.status}`;
+      parts.push(`head ${headResponse.status}`);
     } catch (error) {
-      return `probe ${error instanceof Error ? error.message : String(error)}`;
+      parts.push(`head ${error instanceof Error ? error.message : String(error)}`);
     }
+
+    try {
+      const rangeResponse = await fetch(source, {
+        method: "GET",
+        headers: {
+          ...headers,
+          Range: "bytes=0-1",
+        },
+        timeout: 15,
+        debugLabel: `StreamProbeRange ${this.hostFromUrl(source)}`,
+      } as any);
+      const contentRange = rangeResponse.headers?.get?.("content-range");
+      const contentLength = rangeResponse.headers?.get?.("content-length");
+      parts.push(
+        [
+          `range ${rangeResponse.status}`,
+          contentRange ? `cr=${contentRange}` : "",
+          contentLength ? `len=${contentLength}` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    } catch (error) {
+      parts.push(`range ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    return `probe ${parts.join("; ")}`;
   }
 
   private streamRequestHeaders(source: string) {
