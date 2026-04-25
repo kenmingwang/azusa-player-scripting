@@ -583,16 +583,23 @@ class AzusaScriptingPlayer {
     source: string,
     headers?: Record<string, string>,
   ) {
-    if (this.attemptedSourceUrls.some((item) => item.includes(source))) {
+    const summary = this.summarizeSource(source);
+    if (this.attemptedSourceUrls.some((item) => item.includes(summary))) {
       return;
     }
 
     const headerInfo = headers
-      ? `Referer=${headers.Referer ?? "none"} UA=${headers["User-Agent"] ? "yes" : "no"}`
+      ? `ref=${this.compactHeaderValue(headers.Referer)} ua=${this.compactHeaderValue(headers["User-Agent"])} accept=${this.compactHeaderValue(headers.Accept)} fetch=${headers["Sec-Fetch-Dest"] ?? "none"}/${headers["Sec-Fetch-Mode"] ?? "none"}`
       : "local";
     this.attemptedSourceUrls.push(
-      `${this.attemptedSourceUrls.length + 1}. ${source} (${headerInfo})`,
+      `#${this.attemptedSourceUrls.length + 1} ${summary} (${headerInfo})`,
     );
+
+    console.log?.("[azusa-player][audio-attempt]", {
+      index: this.attemptedSourceUrls.length,
+      source,
+      headers,
+    });
   }
 
   private describeAttemptedSourceUrls() {
@@ -600,7 +607,40 @@ class AzusaScriptingPlayer {
       return "";
     }
 
-    return `tried urls ${this.attemptedSourceUrls.join(" || ")}`;
+    return `tried ${this.attemptedSourceUrls.length} urls\n${this.attemptedSourceUrls.join("\n")}`;
+  }
+
+  private summarizeSource(source: string) {
+    if (!source.startsWith("http")) {
+      return source;
+    }
+
+    try {
+      const url = new URL(source);
+      const fileName = url.pathname.split("/").filter(Boolean).pop() ?? "";
+      const params = ["os", "og", "bw", "mid", "deadline"]
+        .map((key) => {
+          const value = url.searchParams.get(key);
+          return value ? `${key}=${value}` : "";
+        })
+        .filter(Boolean)
+        .join(" ");
+      return `${url.hostname} / ${fileName}${params ? ` / ${params}` : ""}`;
+    } catch {
+      return source.slice(0, 120);
+    }
+  }
+
+  private compactHeaderValue(value?: string) {
+    if (!value) {
+      return "none";
+    }
+
+    if (value.length <= 36) {
+      return value;
+    }
+
+    return `${value.slice(0, 33)}...`;
   }
 
   private hostFromUrl(rawUrl: string) {

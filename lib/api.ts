@@ -3,7 +3,7 @@ import { parseSourceInput } from "./sources";
 import type { ImportResult, SourceDescriptor, Track } from "./types";
 
 const DEFAULT_USER_AGENT =
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 const VIDEO_INFO_URL =
   "https://api.bilibili.com/x/web-interface/view?bvid={bvid}";
@@ -180,13 +180,12 @@ function scoreAudio(
 ) {
   const codec = (audio.codecs ?? "").toLowerCase();
   const mimeType = (audio.mimeType ?? "").toLowerCase();
-  const bandwidth = audio.bandwidth ?? 999999;
-  const distanceFromSweetSpot = Math.abs(bandwidth - 132000);
+  const bandwidth = audio.bandwidth ?? audio.id ?? 0;
 
   let score = 0;
   if (codec.includes("mp4a")) score += 120;
   if (mimeType.includes("audio/mp4")) score += 40;
-  score -= Math.floor(distanceFromSweetSpot / 2000);
+  score += Math.floor(bandwidth / 2000);
   return score;
 }
 
@@ -646,6 +645,18 @@ export function requestHeaders(
     const host = target?.hostname?.toLowerCase() ?? "";
     if (host.endsWith("qq.com")) {
       headers.Origin = "https://y.qq.com";
+    }
+
+    if (
+      host.endsWith("bilivideo.com") ||
+      host.endsWith("bilivideo.cn") ||
+      host.endsWith("hdslb.com") ||
+      host.endsWith("akamaized.net")
+    ) {
+      headers.Accept = "audio/mp4,audio/*;q=0.9,*/*;q=0.8";
+      headers["Sec-Fetch-Dest"] = "audio";
+      headers["Sec-Fetch-Mode"] = "no-cors";
+      headers["Sec-Fetch-Site"] = "cross-site";
     }
   } catch {}
 
