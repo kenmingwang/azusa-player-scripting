@@ -198,16 +198,16 @@ function scoreStreamHost(url?: string) {
   try {
     const host = new URL(url).hostname.toLowerCase();
 
+    if (host.includes("mirrorcosov")) {
+      return -260;
+    }
+
     if (
       host.endsWith("bilivideo.com") ||
       host.endsWith("bilivideo.cn") ||
       host.endsWith("hdslb.com")
     ) {
-      return 120;
-    }
-
-    if (host.endsWith("akamaized.net")) {
-      return -120;
+      return 80;
     }
 
     return 0;
@@ -234,6 +234,7 @@ function buildAudioCandidateUrls(
       audioQualityScore,
       hostScore: scoreStreamHost(url),
       audioIndex,
+      baseUrlScore: urlIndex === 0 ? 180 : 0,
       urlIndex,
     }));
   });
@@ -242,8 +243,8 @@ function buildAudioCandidateUrls(
     entries
       .sort((left, right) => {
         const scoreDelta =
-          right.audioQualityScore + right.hostScore -
-          (left.audioQualityScore + left.hostScore);
+          right.audioQualityScore + right.hostScore + right.baseUrlScore -
+          (left.audioQualityScore + left.hostScore + left.baseUrlScore);
         if (scoreDelta !== 0) {
           return scoreDelta;
         }
