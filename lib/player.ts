@@ -589,7 +589,7 @@ class AzusaScriptingPlayer {
     }
 
     const headerInfo = headers
-      ? `ref=${this.compactHeaderValue(headers.Referer)} ua=${this.compactHeaderValue(headers["User-Agent"])} accept=${this.compactHeaderValue(headers.Accept)} fetch=${headers["Sec-Fetch-Dest"] ?? "none"}/${headers["Sec-Fetch-Mode"] ?? "none"}`
+      ? `ref=${this.compactHeaderValue(headers.Referer)} range=${headers.Range ?? "none"} enc=${headers["Accept-Encoding"] ?? "none"} fetch=${headers["Sec-Fetch-Site"] ?? "none"}/${headers["Sec-Fetch-Dest"] ?? "none"}`
       : "local";
     this.attemptedSourceUrls.push(
       `#${this.attemptedSourceUrls.length + 1} ${summary} (${headerInfo})`,
@@ -618,14 +618,14 @@ class AzusaScriptingPlayer {
     try {
       const url = new URL(source);
       const fileName = url.pathname.split("/").filter(Boolean).pop() ?? "";
-      const params = ["os", "og", "bw", "mid", "deadline"]
+      const params = ["os", "og", "bw", "mid"]
         .map((key) => {
           const value = url.searchParams.get(key);
           return value ? `${key}=${value}` : "";
         })
         .filter(Boolean)
         .join(" ");
-      return `${url.hostname} / ${fileName}${params ? ` / ${params}` : ""}`;
+      return `${url.hostname}\n  ${fileName}${params ? `\n  ${params}` : ""}`;
     } catch {
       return source.slice(0, 120);
     }
@@ -683,7 +683,6 @@ class AzusaScriptingPlayer {
 
     return requestHeaders(source, {
       Referer: referer,
-      Origin: "https://www.bilibili.com",
     });
   }
 

@@ -3,7 +3,7 @@ import { parseSourceInput } from "./sources";
 import type { ImportResult, SourceDescriptor, Track } from "./types";
 
 const DEFAULT_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.62";
 
 const VIDEO_INFO_URL =
   "https://api.bilibili.com/x/web-interface/view?bvid={bvid}";
@@ -653,10 +653,19 @@ export function requestHeaders(
       host.endsWith("hdslb.com") ||
       host.endsWith("akamaized.net")
     ) {
-      headers.Accept = "audio/mp4,audio/*;q=0.9,*/*;q=0.8";
+      headers.Accept = "*/*";
+      headers["Accept-Encoding"] = "identity;q=1, *;q=0";
+      headers["Accept-Language"] = "zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7";
+      headers.Range = "bytes=0-";
+      headers.Priority = "i";
+      headers["Sec-CH-UA"] =
+        '"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"';
+      headers["Sec-CH-UA-Mobile"] = "?0";
+      headers["Sec-CH-UA-Platform"] = '"Windows"';
       headers["Sec-Fetch-Dest"] = "audio";
       headers["Sec-Fetch-Mode"] = "no-cors";
-      headers["Sec-Fetch-Site"] = "cross-site";
+      headers["Sec-Fetch-Site"] = "none";
+      headers["Sec-Fetch-Storage-Access"] = "active";
     }
   } catch {}
 
