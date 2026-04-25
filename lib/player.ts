@@ -54,6 +54,8 @@ const clearTimeoutApi =
     : null;
 
 const STREAM_DIAGNOSTIC_VERSION = "stream-diagnostic-2026-04-25.1";
+const SINGLE_BASE_STREAM_ONLY = true;
+const BASE_STREAM_LOAD_TIMEOUT_MS = 30000;
 
 const hasNativeAudioPlayer = () => typeof AVPlayerCtor === "function";
 
@@ -81,6 +83,9 @@ class AzusaScriptingPlayer {
   private lastSourceDebug = "";
   private attemptedSourceUrls: string[] = [];
   private localFallbackAttemptedTrackId?: string;
+  private baseStreamLoadStartedAt = 0;
+  private deferredPlaybackError?: string;
+  private baseStreamTimeoutTimer?: number;
   private playbackMode: PlaybackMode = "normal";
   private playbackState: PlaybackUiState = "idle";
   private playbackDetail = "";
@@ -235,6 +240,9 @@ class AzusaScriptingPlayer {
     this.progressTrackId = this.queue[index]?.id;
     this.localFallbackAttemptedTrackId = undefined;
     this.attemptedSourceUrls = [];
+    this.clearBaseStreamTimeout();
+    this.baseStreamLoadStartedAt = Date.now();
+    this.deferredPlaybackError = undefined;
     this.progressAnchorTime = 0;
     this.progressAnchorAt = 0;
     this.bindings.onCurrentTrackChange?.(this.queue[index], this.currentIndex);
@@ -251,6 +259,7 @@ class AzusaScriptingPlayer {
 
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
+      this.clearBaseStreamTimeout();
       this.logPlaybackReady();
       this.shouldBePlaying = true;
       this.startProgressClock(this.readNativeCurrentTime());
@@ -259,7 +268,7 @@ class AzusaScriptingPlayer {
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
     };
 
-    if (!this.loadPreparedTrack(track) && !(await this.tryLoadCurrentSourceViaLocalCache(track))) {
+    if (!this.loadPreparedTrack(track)) {
       throw new Error(
         `播放器无法装载音频源${this.lastSourceDebug ? `：${this.lastSourceDebug}` : ""}`,
       );
@@ -269,6 +278,7 @@ class AzusaScriptingPlayer {
   pause() {
     if (!this.player) return;
     this.shouldBePlaying = false;
+    this.clearBaseStreamTimeout();
     this.freezeProgressClock();
     this.player.pause();
     this.emitState("paused");
@@ -310,6 +320,7 @@ class AzusaScriptingPlayer {
   stop() {
     if (!this.player) return;
     this.shouldBePlaying = false;
+    this.clearBaseStreamTimeout();
     this.player.stop();
     this.loadedTrackId = undefined;
     this.activeTrackId = undefined;
@@ -322,6 +333,7 @@ class AzusaScriptingPlayer {
     this.lastSourceDebug = "";
     this.attemptedSourceUrls = [];
     this.localFallbackAttemptedTrackId = undefined;
+    this.baseStreamLoadStartedAt = 0;
     this.stopTicker();
     this.emitState("paused");
     this.emitProgress(true);
@@ -333,6 +345,7 @@ class AzusaScriptingPlayer {
   dispose() {
     this.stopTicker();
     this.shouldBePlaying = false;
+    this.clearBaseStreamTimeout();
     if (this.player) {
       this.player.stop();
       this.player.dispose();
@@ -348,6 +361,7 @@ class AzusaScriptingPlayer {
     this.lastSourceDebug = "";
     this.attemptedSourceUrls = [];
     this.localFallbackAttemptedTrackId = undefined;
+    this.baseStreamLoadStartedAt = 0;
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
@@ -432,7 +446,17 @@ class AzusaScriptingPlayer {
   }
 
   private async handlePlaybackError(message: string) {
-    if (await this.tryRecoverFromStreamError()) {
+    if (this.deferBaseStreamErrorUntilTimeout(message)) {
+      return;
+    }
+
+    await this.finalizePlaybackError(message);
+  }
+
+  private async finalizePlaybackError(message: string) {
+    this.clearBaseStreamTimeout();
+
+    if (!SINGLE_BASE_STREAM_ONLY && (await this.tryRecoverFromStreamError())) {
       return;
     }
 
@@ -458,6 +482,56 @@ class AzusaScriptingPlayer {
     });
     this.emitState("error", detail);
     this.bindings.onError?.(detail);
+  }
+
+  private deferBaseStreamErrorUntilTimeout(message: string) {
+    if (!SINGLE_BASE_STREAM_ONLY || this.playbackState !== "loading") {
+      return false;
+    }
+
+    const source = this.currentSource();
+    if (!source.startsWith("http://") && !source.startsWith("https://")) {
+      return false;
+    }
+
+    const startedAt = this.baseStreamLoadStartedAt || Date.now();
+    const elapsed = Date.now() - startedAt;
+    const remaining = BASE_STREAM_LOAD_TIMEOUT_MS - elapsed;
+    if (remaining <= 0 || !setTimeoutApi) {
+      return false;
+    }
+
+    this.deferredPlaybackError = message;
+    this.emitState(
+      "loading",
+      `AVPlayer reported an error; waiting ${Math.ceil(remaining / 1000)}s for baseUrl before failing`,
+    );
+
+    if (!this.baseStreamTimeoutTimer) {
+      const loadToken = this.loadToken;
+      this.baseStreamTimeoutTimer = setTimeoutApi(() => {
+        if (loadToken !== this.loadToken || this.playbackState !== "loading") {
+          return;
+        }
+
+        const pending = this.deferredPlaybackError ?? message;
+        this.deferredPlaybackError = undefined;
+        this.baseStreamTimeoutTimer = undefined;
+        void this.finalizePlaybackError(
+          `${pending} (waited ${BASE_STREAM_LOAD_TIMEOUT_MS}ms for baseUrl)`,
+        );
+      }, remaining) as unknown as number;
+    }
+
+    return true;
+  }
+
+  private clearBaseStreamTimeout() {
+    if (this.baseStreamTimeoutTimer && clearTimeoutApi) {
+      clearTimeoutApi(this.baseStreamTimeoutTimer);
+    }
+    this.baseStreamTimeoutTimer = undefined;
+    this.deferredPlaybackError = undefined;
   }
 
   private logPlaybackReady() {
@@ -525,8 +599,16 @@ class AzusaScriptingPlayer {
   }
 
   private collectSourceCandidates(track: Track) {
-    const candidates = track.localFilePath && FileManager.existsSync(track.localFilePath)
-      ? [track.localFilePath]
+    if (
+      !SINGLE_BASE_STREAM_ONLY &&
+      track.localFilePath &&
+      FileManager.existsSync(track.localFilePath)
+    ) {
+      return [track.localFilePath];
+    }
+
+    const candidates = SINGLE_BASE_STREAM_ONLY
+      ? [track.streamUrl]
       : [
           track.streamUrl,
           ...(track.backupStreamUrls ?? []),
@@ -850,6 +932,10 @@ class AzusaScriptingPlayer {
   }
 
   private async tryRecoverFromStreamError() {
+    if (SINGLE_BASE_STREAM_ONLY) {
+      return false;
+    }
+
     const currentTrack = this.getCurrentTrack();
     if (
       !this.player ||
