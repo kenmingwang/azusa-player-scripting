@@ -247,12 +247,6 @@ class AzusaScriptingPlayer {
     this.queue[index] = track;
     this.bindings.onQueueChange?.([...this.queue]);
 
-    if (!this.loadPreparedTrack(track) && !(await this.tryLoadCurrentSourceViaLocalCache(track))) {
-      throw new Error(
-        `播放器无法装载音频源${this.lastSourceDebug ? `：${this.lastSourceDebug}` : ""}`,
-      );
-    }
-
     this.player!.onReadyToPlay = () => {
       if (loadToken !== this.loadToken) return;
       this.logPlaybackReady();
@@ -262,6 +256,12 @@ class AzusaScriptingPlayer {
       this.emitState("playing");
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
     };
+
+    if (!this.loadPreparedTrack(track) && !(await this.tryLoadCurrentSourceViaLocalCache(track))) {
+      throw new Error(
+        `播放器无法装载音频源${this.lastSourceDebug ? `：${this.lastSourceDebug}` : ""}`,
+      );
+    }
   }
 
   pause() {
@@ -735,6 +735,19 @@ class AzusaScriptingPlayer {
 
     return requestHeaders(source, {
       Referer: referer,
+      Accept: "*/*",
+      "Accept-Encoding": "identity;q=1, *;q=0",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7",
+      Range: "bytes=0-",
+      Priority: "i",
+      "Sec-CH-UA":
+        '"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+      "Sec-CH-UA-Mobile": "?0",
+      "Sec-CH-UA-Platform": '"Windows"',
+      "Sec-Fetch-Dest": "audio",
+      "Sec-Fetch-Mode": "no-cors",
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-Storage-Access": "active",
     });
   }
 
