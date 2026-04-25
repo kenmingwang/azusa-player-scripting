@@ -639,14 +639,11 @@ class AzusaScriptingPlayer {
   }
 
   private streamRequestHeaders(source: string) {
-    const currentTrack = this.getCurrentTrack();
-    const referer = currentTrack?.bvid
-      ? `https://www.bilibili.com/video/${currentTrack.bvid}`
-      : undefined;
+    const referer = "https://www.bilibili.com/";
 
     return requestHeaders(source, {
       Referer: referer,
-      Origin: referer ? "https://www.bilibili.com" : undefined,
+      Origin: "https://www.bilibili.com",
     });
   }
 
