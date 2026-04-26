@@ -20,12 +20,20 @@ import {
 import type { Track } from "./lib/types";
 
 const DEFAULT_REFERER = "https://www.bilibili.com/";
-const REPRO_VERSION = "avplayer-bvid-queue-repro-2026-04-26.3";
+const REPRO_VERSION = "avplayer-bvid-queue-repro-2026-04-26.4";
 
 const globalRuntime = globalThis as any;
 const AVPlayerCtor = (AVPlayer as any) ?? globalRuntime.AVPlayer;
 const SharedAudioSessionApi =
   (SharedAudioSession as any) ?? globalRuntime.SharedAudioSession;
+const setTimeoutApi =
+  typeof globalRuntime.setTimeout === "function"
+    ? globalRuntime.setTimeout.bind(globalRuntime)
+    : null;
+const clearTimeoutApi =
+  typeof globalRuntime.clearTimeout === "function"
+    ? globalRuntime.clearTimeout.bind(globalRuntime)
+    : null;
 
 let player: any | null = null;
 let reproQueue: Track[] = [];
@@ -54,6 +62,44 @@ function streamHeaders(source: string, referer: string, cookie: string) {
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-Storage-Access": "active",
   });
+}
+
+function minimalHeaders(source: string, referer: string, cookie: string) {
+  const headers = requestHeaders(source, {
+    Referer: referer || DEFAULT_REFERER,
+    Cookie: cookie.trim() || undefined,
+    Accept: "*/*",
+    Range: "bytes=0-",
+  });
+
+  return Object.fromEntries(
+    Object.entries(headers).filter(([key]) =>
+      [
+        "accept",
+        "cookie",
+        "range",
+        "referer",
+        "user-agent",
+      ].includes(key.toLowerCase()),
+    ),
+  );
+}
+
+function badRefererHeaders(source: string, referer: string, cookie: string) {
+  return {
+    ...streamHeaders(source, referer, cookie),
+    Referer: "https://example.com/",
+  };
+}
+
+function lowerCaseRefererHeaders(source: string, referer: string, cookie: string) {
+  const headers = streamHeaders(source, referer, cookie);
+  const next: Record<string, string> = {
+    ...headers,
+    referer: headers.Referer || referer || DEFAULT_REFERER,
+  };
+  delete next.Referer;
+  return next;
 }
 
 function headerDump(headers: Record<string, string>) {
@@ -323,6 +369,67 @@ function ReproApp() {
     }
   }
 
+  async function runFetchProbeForRawSource(
+    label: string,
+    source: string,
+    headers?: Record<string, string>,
+  ) {
+    append("raw fetch probe input", {
+      label,
+      source,
+      summary: summarizeUrl(source),
+      headerKeys: headers ? Object.keys(headers) : [],
+      headers: headers ? logHeaders(headers) : "none",
+      headerDump: headers ? headerDump(headers) : "none",
+    });
+
+    try {
+      const head = await fetch(source, {
+        method: "HEAD",
+        headers,
+        timeout: 15,
+        debugLabel: `HeaderMatrixHead ${label}`,
+      } as any);
+      append("raw HEAD result", {
+        label,
+        status: head.status,
+        contentRange: head.headers?.get?.("content-range"),
+        contentLength: head.headers?.get?.("content-length"),
+        acceptRanges: head.headers?.get?.("accept-ranges"),
+      });
+    } catch (error) {
+      append("raw HEAD error", {
+        label,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    try {
+      const range = await fetch(source, {
+        method: "GET",
+        headers: {
+          ...(headers ?? {}),
+          Range: "bytes=0-1",
+        },
+        timeout: 20,
+        debugLabel: `HeaderMatrixRange ${label}`,
+      } as any);
+      append("raw GET Range result", {
+        label,
+        status: range.status,
+        contentRange: range.headers?.get?.("content-range"),
+        contentLength: range.headers?.get?.("content-length"),
+        acceptRanges: range.headers?.get?.("accept-ranges"),
+        body: await readTinyBody(range),
+      });
+    } catch (error) {
+      append("raw GET Range error", {
+        label,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function runCurrentTrackProbes() {
     const index = reproIndex >= 0 ? reproIndex : 0;
     const track = await prepareTrack(index);
@@ -420,6 +527,212 @@ function ReproApp() {
     setCurrentLabel("Direct m4s URL");
     await ensureAudioSession();
     await playCandidate(directUrlTrack(url), 0, activeRun, false);
+  }
+
+  function playHeaderMatrixVariant(
+    label: string,
+    source: string,
+    runSetSource: (localPlayer: any) => unknown,
+    loggedHeaders?: Record<string, string>,
+  ) {
+    return new Promise<void>((resolve) => {
+      if (typeof AVPlayerCtor !== "function") {
+        append("AVPlayer missing", {
+          label,
+          importedType: typeof AVPlayer,
+          globalType: typeof globalRuntime.AVPlayer,
+        });
+        resolve();
+        return;
+      }
+
+      const activeRun = ++runSerial;
+      disposeCurrentPlayerForCandidate();
+      const localPlayer = new AVPlayerCtor();
+      player = localPlayer;
+      let settled = false;
+      let timer: number | undefined;
+
+      const finish = (reason: string) => {
+        if (settled) return;
+        settled = true;
+        if (timer && clearTimeoutApi) {
+          clearTimeoutApi(timer);
+        }
+        append("AVPlayer header matrix finish", {
+          label,
+          reason,
+          currentTime: localPlayer.currentTime,
+          duration: localPlayer.duration,
+          timeControlStatus: localPlayer.timeControlStatus,
+        });
+        resolve();
+      };
+
+      if (setTimeoutApi) {
+        timer = setTimeoutApi(() => {
+          finish("timeout");
+        }, 15000) as unknown as number;
+      }
+
+      append("AVPlayer header matrix start", {
+        label,
+        run: activeRun,
+        source,
+        sourceSummary: summarizeUrl(source),
+        headerKeys: loggedHeaders ? Object.keys(loggedHeaders) : [],
+        headers: loggedHeaders ? logHeaders(loggedHeaders) : "none",
+        headerDump: loggedHeaders ? headerDump(loggedHeaders) : "none",
+      });
+
+      localPlayer.onReadyToPlay = () => {
+        if (activeRun !== runSerial || player !== localPlayer) return;
+        append("AVPlayer header matrix ready", {
+          label,
+          currentTime: localPlayer.currentTime,
+          duration: localPlayer.duration,
+          timeControlStatus: localPlayer.timeControlStatus,
+        });
+        try {
+          localPlayer.play?.();
+          append("AVPlayer header matrix play called", {
+            label,
+            currentTime: localPlayer.currentTime,
+            duration: localPlayer.duration,
+            timeControlStatus: localPlayer.timeControlStatus,
+          });
+        } catch (error) {
+          append("AVPlayer header matrix play error", {
+            label,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          finish("play-error");
+        }
+      };
+
+      localPlayer.onError = (message: string) => {
+        if (activeRun !== runSerial || player !== localPlayer) return;
+        append("AVPlayer header matrix error", {
+          label,
+          message,
+          currentTime: localPlayer.currentTime,
+          duration: localPlayer.duration,
+          timeControlStatus: localPlayer.timeControlStatus,
+        });
+        finish("error");
+      };
+
+      localPlayer.onTimeControlStatusChanged = (status: unknown) => {
+        if (activeRun !== runSerial || player !== localPlayer) return;
+        append("AVPlayer header matrix status", {
+          label,
+          status,
+          currentTime: localPlayer.currentTime,
+          duration: localPlayer.duration,
+        });
+        if (status === "playing" || status === 2) {
+          if (setTimeoutApi) {
+            setTimeoutApi(() => finish("playing"), 1500);
+          } else {
+            finish("playing");
+          }
+        }
+      };
+
+      localPlayer.onEnded = () => {
+        if (activeRun !== runSerial || player !== localPlayer) return;
+        append("AVPlayer header matrix ended", { label });
+        finish("ended");
+      };
+
+      try {
+        const result = runSetSource(localPlayer);
+        append("AVPlayer header matrix setSource result", {
+          label,
+          result,
+        });
+        if (!result) {
+          finish("setSource-false");
+        }
+      } catch (error) {
+        append("AVPlayer header matrix setSource threw", {
+          label,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        finish("setSource-throw");
+      }
+    });
+  }
+
+  async function runM4sHeaderTransportMatrix() {
+    const source = m4sUrl.trim();
+    if (!source) {
+      append("Missing m4s URL");
+      return;
+    }
+
+    const fullGood = streamHeaders(source, referer, cookie);
+    const minGood = minimalHeaders(source, referer, cookie);
+    const fullBad = badRefererHeaders(source, referer, cookie);
+    const lowerGood = lowerCaseRefererHeaders(source, referer, cookie);
+    append("header matrix plan", {
+      source,
+      sourceSummary: summarizeUrl(source),
+      variants: [
+        "fetch no headers",
+        "fetch full good",
+        "fetch full bad Referer",
+        "fetch minimal good",
+        "AVPlayer no headers",
+        "AVPlayer full good setSource(url, { headers })",
+        "AVPlayer full bad Referer setSource(url, { headers })",
+        "AVPlayer full good setSource({ url, headers })",
+        "AVPlayer lowercase referer setSource(url, { headers })",
+        "AVPlayer minimal good setSource(url, { headers })",
+      ],
+    });
+
+    await runFetchProbeForRawSource("no-headers", source);
+    await runFetchProbeForRawSource("full-good", source, fullGood);
+    await runFetchProbeForRawSource("full-bad-referer", source, fullBad);
+    await runFetchProbeForRawSource("minimal-good", source, minGood);
+
+    await ensureAudioSession();
+    await playHeaderMatrixVariant(
+      "no-headers:setSource(url)",
+      source,
+      (localPlayer) => localPlayer.setSource(source),
+    );
+    await playHeaderMatrixVariant(
+      "full-good:setSource(url,{headers})",
+      source,
+      (localPlayer) => localPlayer.setSource(source, { headers: fullGood }),
+      fullGood,
+    );
+    await playHeaderMatrixVariant(
+      "full-bad-referer:setSource(url,{headers})",
+      source,
+      (localPlayer) => localPlayer.setSource(source, { headers: fullBad }),
+      fullBad,
+    );
+    await playHeaderMatrixVariant(
+      "full-good:setSource({url,headers})",
+      source,
+      (localPlayer) => localPlayer.setSource({ url: source, headers: fullGood }),
+      fullGood,
+    );
+    await playHeaderMatrixVariant(
+      "lowercase-referer:setSource(url,{headers})",
+      source,
+      (localPlayer) => localPlayer.setSource(source, { headers: lowerGood }),
+      lowerGood,
+    );
+    await playHeaderMatrixVariant(
+      "minimal-good:setSource(url,{headers})",
+      source,
+      (localPlayer) => localPlayer.setSource(source, { headers: minGood }),
+      minGood,
+    );
   }
 
   async function ensureAudioSession() {
@@ -657,6 +970,10 @@ function ReproApp() {
         <Button
           title="Probe m4s URL"
           action={() => void runDirectM4sProbe()}
+        />
+        <Button
+          title="Run m4s header matrix"
+          action={() => void runM4sHeaderTransportMatrix()}
         />
         <Button title="Play first track" action={() => void playTrackAt(0)} />
         <Button

@@ -24,7 +24,7 @@
   ],
   "remoteResource": {
     "url": "https://github.com/kenmingwang/azusa-player-scripting/tree/avplayer-repro-remote",
-    "hash": "99242c9399dad8cff5ec077b31310072",
+    "hash": "43e46744ea28244c6b59ec89d3b4d49b",
     "autoUpdateInterval": null
   },
   "runInApp": true
