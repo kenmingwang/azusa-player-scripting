@@ -1,13 +1,13 @@
 {
-  "name": "Azusa Player Scripting",
+  "name": "Azusa AVPlayer BVID Repro",
   "localizedNames": {
-    "en": "Azusa Player Scripting",
-    "zh": "Azusa 播放器 Scripting"
+    "en": "Azusa AVPlayer BVID Repro",
+    "zh": "Azusa AVPlayer BVID 复现"
   },
-  "description": "Azusa Player client prototype built for the Scripting app on iPhone.",
+  "description": "Minimum AVPlayer BVID queue repro for Scripting on iPhone.",
   "localizedDescriptions": {
-    "en": "An Azusa Player client prototype for Scripting on iPhone, focused on Bilibili import and playback.",
-    "zh": "一个运行在 Scripting 上的 Azusa Player iPhone 原型，先验证 Bilibili 导入和播放链路。"
+    "en": "A minimum AVPlayer repro that resolves a BVID, logs stream candidates, and plays the queue continuously.",
+    "zh": "一个最小 AVPlayer 复现脚本：输入 BVID，打印音频候选地址并连续播放队列。"
   },
   "author": {
     "name": "Ken Wang",
@@ -23,8 +23,8 @@
     "urls"
   ],
   "remoteResource": {
-    "url": "https://github.com/kenmingwang/azusa-player-scripting",
-    "hash": "67f9e7d00fb50d1d3c435a9628c8c48e",
+    "url": "https://github.com/kenmingwang/azusa-player-scripting/tree/codex/avplayer-repro-remote",
+    "hash": "360642bf7e25814a86141ab21270c687",
     "autoUpdateInterval": null
   },
   "runInApp": true
