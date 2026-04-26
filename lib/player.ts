@@ -92,6 +92,7 @@ class AzusaScriptingPlayer {
   private bindings: PlayerBindings = {};
   private updateTimer?: number;
   private loadToken = 0;
+  private playerGeneration = 0;
   private artworkCache = new Map<string, any | null>();
   private artworkRequests = new Map<string, Promise<any | null>>();
   private progressListeners = new Set<
@@ -228,15 +229,16 @@ class AzusaScriptingPlayer {
   }
 
   async playIndex(index: number) {
-    this.ensurePlayer();
-
     if (index < 0 || index >= this.queue.length) {
       return;
     }
 
     const loadToken = ++this.loadToken;
+    this.disposeNativePlayer();
     this.shouldBePlaying = true;
     this.currentIndex = index;
+    this.loadedTrackId = undefined;
+    this.activeTrackId = undefined;
     this.progressTrackId = this.queue[index]?.id;
     this.localFallbackAttemptedTrackId = undefined;
     this.attemptedSourceUrls = [];
@@ -254,17 +256,37 @@ class AzusaScriptingPlayer {
 
     let track = this.queue[index];
     track = await this.prepareTrackForPlayback(track);
+    if (loadToken !== this.loadToken) return;
     this.queue[index] = track;
     this.bindings.onQueueChange?.([...this.queue]);
 
-    this.player!.onReadyToPlay = () => {
+    const { player, generation } = this.createNativePlayer();
+    player.onReadyToPlay = () => {
+      if (!this.isActiveNativePlayer(player, generation)) return;
       if (loadToken !== this.loadToken) return;
       this.clearBaseStreamTimeout();
       this.logPlaybackReady();
       this.shouldBePlaying = true;
-      this.startProgressClock(this.readNativeCurrentTime());
-      this.player!.play();
-      this.emitState("playing");
+      try {
+        player.play();
+      } catch (error) {
+        void this.handlePlaybackError(
+          error instanceof Error ? error.message : String(error),
+        );
+        return;
+      }
+
+      if (player.timeControlStatus === TimeControlStatusApi?.playing) {
+        this.startProgressClock(this.readNativeCurrentTime());
+        this.emitState("playing");
+      } else if (
+        player.timeControlStatus ===
+        TimeControlStatusApi?.waitingToPlayAtSpecifiedRate
+      ) {
+        this.emitState("loading");
+      } else {
+        this.emitState("loading", "音频已就绪，正在等待系统开始播放");
+      }
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
     };
 
@@ -276,11 +298,13 @@ class AzusaScriptingPlayer {
   }
 
   pause() {
-    if (!this.player) return;
+    this.loadToken += 1;
     this.shouldBePlaying = false;
     this.clearBaseStreamTimeout();
     this.freezeProgressClock();
-    this.player.pause();
+    if (this.player) {
+      this.player.pause();
+    }
     this.emitState("paused");
   }
 
@@ -296,8 +320,18 @@ class AzusaScriptingPlayer {
 
     this.shouldBePlaying = true;
     this.startProgressClock();
-    this.player.play();
-    this.emitState("playing");
+    try {
+      this.player.play();
+      if (this.player.timeControlStatus === TimeControlStatusApi?.playing) {
+        this.emitState("playing");
+      } else {
+        this.emitState("loading", "音频已就绪，正在等待系统恢复播放");
+      }
+    } catch (error) {
+      await this.handlePlaybackError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async toggle() {
@@ -318,10 +352,10 @@ class AzusaScriptingPlayer {
   }
 
   stop() {
-    if (!this.player) return;
+    this.loadToken += 1;
     this.shouldBePlaying = false;
     this.clearBaseStreamTimeout();
-    this.player.stop();
+    this.disposeNativePlayer();
     this.loadedTrackId = undefined;
     this.activeTrackId = undefined;
     this.progressTrackId = undefined;
@@ -343,13 +377,11 @@ class AzusaScriptingPlayer {
   }
 
   dispose() {
+    this.loadToken += 1;
     this.stopTicker();
     this.shouldBePlaying = false;
     this.clearBaseStreamTimeout();
-    if (this.player) {
-      this.player.stop();
-      this.player.dispose();
-    }
+    this.disposeNativePlayer();
     this.loadedTrackId = undefined;
     this.activeTrackId = undefined;
     this.progressTrackId = undefined;
@@ -403,14 +435,49 @@ class AzusaScriptingPlayer {
     };
   }
 
-  private ensurePlayer() {
-    if (this.player) return this.player;
+  private createNativePlayer() {
     if (!hasNativeAudioPlayer()) {
       throw new Error(nativePlayerUnsupportedMessage);
     }
 
-    this.player = new AVPlayerCtor();
-    this.player.onTimeControlStatusChanged = (status: any) => {
+    const player = new AVPlayerCtor();
+    const generation = ++this.playerGeneration;
+    this.player = player;
+    this.attachNativePlayerHandlers(player, generation);
+    return { player, generation };
+  }
+
+  private disposeNativePlayer() {
+    const player = this.player;
+    this.player = null;
+    this.playerGeneration += 1;
+
+    if (!player) return;
+
+    try {
+      player.onReadyToPlay = undefined;
+      player.onTimeControlStatusChanged = undefined;
+      player.onEnded = undefined;
+      player.onError = undefined;
+    } catch {}
+
+    try {
+      player.stop();
+    } catch {}
+
+    try {
+      player.dispose();
+    } catch {}
+  }
+
+  private isActiveNativePlayer(player: any, generation: number) {
+    return this.player === player && this.playerGeneration === generation;
+  }
+
+  private attachNativePlayerHandlers(player: any, generation: number) {
+    player.onTimeControlStatusChanged = (status: any) => {
+      if (!this.isActiveNativePlayer(player, generation)) return;
+
       if (status === TimeControlStatusApi?.waitingToPlayAtSpecifiedRate) {
         if (this.shouldBePlaying) {
           this.emitState("loading");
@@ -434,15 +501,15 @@ class AzusaScriptingPlayer {
       this.emitState(mapStatus(status));
     };
 
-    this.player.onEnded = () => {
+    player.onEnded = () => {
+      if (!this.isActiveNativePlayer(player, generation)) return;
       void this.handleTrackEnded();
     };
 
-    this.player.onError = (message: string) => {
+    player.onError = (message: string) => {
+      if (!this.isActiveNativePlayer(player, generation)) return;
       void this.handlePlaybackError(message);
     };
-
-    return this.player;
   }
 
   private async handlePlaybackError(message: string) {
@@ -636,7 +703,6 @@ class AzusaScriptingPlayer {
 
     while (this.sourceAttemptIndex < this.sourceCandidates.length) {
       const source = this.sourceCandidates[this.sourceAttemptIndex];
-      this.player.stop();
       const ready = this.setSourceWithHeaders(source);
       if (ready) {
         this.loadedTrackId = this.activeTrackId;
