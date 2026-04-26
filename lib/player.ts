@@ -54,7 +54,7 @@ const clearTimeoutApi =
     : null;
 
 const STREAM_DIAGNOSTIC_VERSION = "stream-diagnostic-2026-04-25.1";
-const SINGLE_BASE_STREAM_ONLY = true;
+const SINGLE_BASE_STREAM_ONLY = false;
 const BASE_STREAM_LOAD_TIMEOUT_MS = 30000;
 
 const hasNativeAudioPlayer = () => typeof AVPlayerCtor === "function";
@@ -93,6 +93,7 @@ class AzusaScriptingPlayer {
   private updateTimer?: number;
   private loadToken = 0;
   private playerGeneration = 0;
+  private readyToPlayHandler?: (player: any, generation: number) => void;
   private artworkCache = new Map<string, any | null>();
   private artworkRequests = new Map<string, Promise<any | null>>();
   private progressListeners = new Set<
@@ -260,8 +261,7 @@ class AzusaScriptingPlayer {
     this.queue[index] = track;
     this.bindings.onQueueChange?.([...this.queue]);
 
-    const { player, generation } = this.createNativePlayer();
-    player.onReadyToPlay = () => {
+    this.readyToPlayHandler = (player: any, generation: number) => {
       if (!this.isActiveNativePlayer(player, generation)) return;
       if (loadToken !== this.loadToken) return;
       this.clearBaseStreamTimeout();
@@ -368,6 +368,7 @@ class AzusaScriptingPlayer {
     this.attemptedSourceUrls = [];
     this.localFallbackAttemptedTrackId = undefined;
     this.baseStreamLoadStartedAt = 0;
+    this.readyToPlayHandler = undefined;
     this.stopTicker();
     this.emitState("paused");
     this.emitProgress(true);
@@ -394,6 +395,7 @@ class AzusaScriptingPlayer {
     this.attemptedSourceUrls = [];
     this.localFallbackAttemptedTrackId = undefined;
     this.baseStreamLoadStartedAt = 0;
+    this.readyToPlayHandler = undefined;
     if (MediaPlayerApi) {
       MediaPlayerApi.nowPlayingInfo = null;
     }
@@ -475,6 +477,11 @@ class AzusaScriptingPlayer {
   }
 
   private attachNativePlayerHandlers(player: any, generation: number) {
+    player.onReadyToPlay = () => {
+      if (!this.isActiveNativePlayer(player, generation)) return;
+      this.readyToPlayHandler?.(player, generation);
+    };
+
     player.onTimeControlStatusChanged = (status: any) => {
       if (!this.isActiveNativePlayer(player, generation)) return;
 
@@ -703,6 +710,8 @@ class AzusaScriptingPlayer {
 
     while (this.sourceAttemptIndex < this.sourceCandidates.length) {
       const source = this.sourceCandidates[this.sourceAttemptIndex];
+      this.disposeNativePlayer();
+      this.createNativePlayer();
       const ready = this.setSourceWithHeaders(source);
       if (ready) {
         this.loadedTrackId = this.activeTrackId;
