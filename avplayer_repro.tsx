@@ -20,7 +20,7 @@ import {
 import type { Track } from "./lib/types";
 
 const DEFAULT_REFERER = "https://www.bilibili.com/";
-const REPRO_VERSION = "avplayer-bvid-queue-repro-2026-04-26.1";
+const REPRO_VERSION = "avplayer-bvid-queue-repro-2026-04-26.2";
 
 const globalRuntime = globalThis as any;
 const AVPlayerCtor = (AVPlayer as any) ?? globalRuntime.AVPlayer;
@@ -143,6 +143,7 @@ function disposeCurrentPlayerForCandidate() {
 
 function ReproApp() {
   const [bvid, setBvid] = useState("");
+  const [m4sUrl, setM4sUrl] = useState("");
   const [referer, setReferer] = useState(DEFAULT_REFERER);
   const [queueSummary, setQueueSummary] = useState("No BVID loaded");
   const [currentLabel, setCurrentLabel] = useState("Idle");
@@ -296,6 +297,42 @@ function ReproApp() {
     for (let sourceIndex = 0; sourceIndex < candidates.length; sourceIndex += 1) {
       await runFetchProbeForSource(track, sourceIndex);
     }
+  }
+
+  function directUrlTrack(url: string): Track {
+    return {
+      id: `direct:${Date.now()}`,
+      bvid: "direct-m4s",
+      cid: "direct-m4s",
+      title: "Direct m4s URL",
+      artist: "Manual input",
+      sourceTitle: "Direct m4s",
+      streamUrl: url,
+    };
+  }
+
+  async function runDirectM4sProbe() {
+    const url = m4sUrl.trim();
+    if (!url) {
+      append("Missing m4s URL");
+      return;
+    }
+
+    await runFetchProbeForSource(directUrlTrack(url), 0);
+  }
+
+  async function playDirectM4sUrl() {
+    const url = m4sUrl.trim();
+    if (!url) {
+      append("Missing m4s URL");
+      return;
+    }
+
+    const activeRun = ++runSerial;
+    reproIndex = -1;
+    setCurrentLabel("Direct m4s URL");
+    await ensureAudioSession();
+    await playCandidate(directUrlTrack(url), 0, activeRun, false);
   }
 
   async function ensureAudioSession() {
@@ -504,6 +541,12 @@ function ReproApp() {
           onChanged={setBvid}
         />
         <TextField
+          title="m4s URL"
+          placeholder="Paste direct m4s URL"
+          value={m4sUrl}
+          onChanged={setM4sUrl}
+        />
+        <TextField
           title="Referer"
           placeholder={DEFAULT_REFERER}
           value={referer}
@@ -514,7 +557,15 @@ function ReproApp() {
           title="Probe current track"
           action={() => void runCurrentTrackProbes()}
         />
+        <Button
+          title="Probe m4s URL"
+          action={() => void runDirectM4sProbe()}
+        />
         <Button title="Play first track" action={() => void playTrackAt(0)} />
+        <Button
+          title="Play m4s URL"
+          action={() => void playDirectM4sUrl()}
+        />
         <Button
           title="Play queue continuously"
           action={() => void playTrackAt(0, ++runSerial, true)}
