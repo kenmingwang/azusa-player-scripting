@@ -20,7 +20,7 @@ import {
 import type { Track } from "./lib/types";
 
 const DEFAULT_REFERER = "https://www.bilibili.com/";
-const REPRO_VERSION = "avplayer-bvid-queue-repro-2026-04-26.2";
+const REPRO_VERSION = "avplayer-bvid-queue-repro-2026-04-26.3";
 
 const globalRuntime = globalThis as any;
 const AVPlayerCtor = (AVPlayer as any) ?? globalRuntime.AVPlayer;
@@ -36,9 +36,10 @@ function now() {
   return new Date().toLocaleTimeString();
 }
 
-function streamHeaders(source: string, referer: string) {
+function streamHeaders(source: string, referer: string, cookie: string) {
   return requestHeaders(source, {
     Referer: referer || DEFAULT_REFERER,
+    Cookie: cookie.trim() || undefined,
     Accept: "*/*",
     "Accept-Encoding": "identity;q=1, *;q=0",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7",
@@ -56,9 +57,20 @@ function streamHeaders(source: string, referer: string) {
 }
 
 function headerDump(headers: Record<string, string>) {
-  return Object.entries(headers)
+  return Object.entries(logHeaders(headers))
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
+}
+
+function logHeaders(headers: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(headers).map(([key, value]) => [
+      key,
+      key.toLowerCase() === "cookie"
+        ? `present len=${value.length} prefix=${value.slice(0, 24)}...`
+        : value,
+    ]),
+  );
 }
 
 function sourceCandidates(track: Track) {
@@ -97,6 +109,27 @@ function summarizeTrack(track?: Track | null) {
     title: track.title,
     artist: track.artist,
     durationSeconds: track.durationSeconds,
+  };
+}
+
+function playUrlApiUrl(track: Track) {
+  return `https://api.bilibili.com/x/player/playurl?cid=${encodeURIComponent(track.cid)}&bvid=${encodeURIComponent(track.bvid)}&qn=64&fnval=16`;
+}
+
+function summarizePlayUrlAudio(audio: any, index: number) {
+  const urls = [audio?.baseUrl, ...(audio?.backupUrl ?? [])].filter(Boolean);
+  return {
+    index,
+    id: audio?.id,
+    bandwidth: audio?.bandwidth,
+    mimeType: audio?.mimeType,
+    codecs: audio?.codecs,
+    urlCount: urls.length,
+    urls: urls.map((url: string, urlIndex: number) => ({
+      urlIndex,
+      summary: summarizeUrl(url),
+      url,
+    })),
   };
 }
 
@@ -145,6 +178,7 @@ function ReproApp() {
   const [bvid, setBvid] = useState("");
   const [m4sUrl, setM4sUrl] = useState("");
   const [referer, setReferer] = useState(DEFAULT_REFERER);
+  const [cookie, setCookie] = useState("");
   const [queueSummary, setQueueSummary] = useState("No BVID loaded");
   const [currentLabel, setCurrentLabel] = useState("Idle");
   const [logs, setLogs] = useState([
@@ -231,14 +265,14 @@ function ReproApp() {
       return;
     }
 
-    const headers = streamHeaders(source, referer);
+    const headers = streamHeaders(source, referer, cookie);
     append("fetch probe input", {
       track: summarizeTrack(track),
       sourceIndex,
       source,
       summary: summarizeUrl(source),
       headerKeys: Object.keys(headers),
-      headers,
+      headers: logHeaders(headers),
       headerDump: headerDump(headers),
     });
 
@@ -296,6 +330,59 @@ function ReproApp() {
 
     for (let sourceIndex = 0; sourceIndex < candidates.length; sourceIndex += 1) {
       await runFetchProbeForSource(track, sourceIndex);
+    }
+  }
+
+  async function probeCurrentTrackPlayUrlApi() {
+    const index = reproIndex >= 0 ? reproIndex : 0;
+    if (!reproQueue.length) {
+      await resolveBvidQueue();
+    }
+
+    const track = reproQueue[index];
+    if (!track) {
+      append("playurl API missing track", {
+        index,
+        queueLength: reproQueue.length,
+      });
+      return;
+    }
+
+    const url = playUrlApiUrl(track);
+    const headers = requestHeaders(url, {
+      Referer: referer || DEFAULT_REFERER,
+      Cookie: cookie.trim() || undefined,
+      Accept: "application/json,text/plain,*/*",
+    });
+    append("playurl API input", {
+      track: summarizeTrack(track),
+      url,
+      headerKeys: Object.keys(headers),
+      headers: logHeaders(headers),
+      headerDump: headerDump(headers),
+    });
+
+    try {
+      const response = await fetch(url, {
+        headers,
+        timeout: 15,
+        debugLabel: `ReproPlayUrl ${track.bvid}/${track.cid}`,
+      } as any);
+      const json = await response.json();
+      append("playurl API result", {
+        status: response.status,
+        ok: response.ok,
+        code: json?.code,
+        message: json?.message,
+        timelength: json?.data?.timelength,
+        audioCount: json?.data?.dash?.audio?.length ?? 0,
+        audios: (json?.data?.dash?.audio ?? []).map(summarizePlayUrlAudio),
+        durl: json?.data?.durl ?? [],
+      });
+    } catch (error) {
+      append("playurl API error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -379,7 +466,7 @@ function ReproApp() {
     disposeCurrentPlayerForCandidate();
     const localPlayer = new AVPlayerCtor();
     player = localPlayer;
-    const headers = streamHeaders(source, referer);
+    const headers = streamHeaders(source, referer, cookie);
 
     append("AVPlayer candidate start", {
       run: activeRun,
@@ -390,7 +477,7 @@ function ReproApp() {
       source,
       sourceSummary: summarizeUrl(source),
       headerKeys: Object.keys(headers),
-      headers,
+      headers: logHeaders(headers),
       headerDump: headerDump(headers),
     });
 
@@ -552,7 +639,17 @@ function ReproApp() {
           value={referer}
           onChanged={setReferer}
         />
+        <TextField
+          title="Cookie"
+          placeholder="Optional Bilibili Cookie"
+          value={cookie}
+          onChanged={setCookie}
+        />
         <Button title="Resolve BVID" action={() => void resolveBvidQueue()} />
+        <Button
+          title="Probe playurl API"
+          action={() => void probeCurrentTrackPlayUrlApi()}
+        />
         <Button
           title="Probe current track"
           action={() => void runCurrentTrackProbes()}
