@@ -12,10 +12,15 @@ import {
   useState,
 } from "scripting";
 
+import {
+  importFromInput,
+  requestHeaders,
+  resolveTrackStream,
+} from "./lib/api";
+import type { Track } from "./lib/types";
+
 const DEFAULT_REFERER = "https://www.bilibili.com/";
-const DEFAULT_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.62";
-const REPRO_VERSION = "avplayer-bili-m4s-repro-2026-04-25.1";
+const REPRO_VERSION = "avplayer-bvid-queue-repro-2026-04-26.1";
 
 const globalRuntime = globalThis as any;
 const AVPlayerCtor = (AVPlayer as any) ?? globalRuntime.AVPlayer;
@@ -23,18 +28,20 @@ const SharedAudioSessionApi =
   (SharedAudioSession as any) ?? globalRuntime.SharedAudioSession;
 
 let player: any | null = null;
+let reproQueue: Track[] = [];
+let reproIndex = -1;
+let runSerial = 0;
 
 function now() {
   return new Date().toLocaleTimeString();
 }
 
-function streamHeaders(referer: string) {
-  return {
-    Accept: "*/*",
-    "User-Agent": DEFAULT_USER_AGENT,
-    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7",
+function streamHeaders(source: string, referer: string) {
+  return requestHeaders(source, {
     Referer: referer || DEFAULT_REFERER,
+    Accept: "*/*",
     "Accept-Encoding": "identity;q=1, *;q=0",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7",
     Range: "bytes=0-",
     Priority: "i",
     "Sec-CH-UA":
@@ -45,13 +52,20 @@ function streamHeaders(referer: string) {
     "Sec-Fetch-Mode": "no-cors",
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-Storage-Access": "active",
-  };
+  });
 }
 
 function headerDump(headers: Record<string, string>) {
   return Object.entries(headers)
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
+}
+
+function sourceCandidates(track: Track) {
+  return [
+    track.streamUrl,
+    ...(track.backupStreamUrls ?? []),
+  ].filter(Boolean) as string[];
 }
 
 function summarizeUrl(rawUrl: string) {
@@ -71,6 +85,21 @@ function summarizeUrl(rawUrl: string) {
   }
 }
 
+function summarizeTrack(track?: Track | null) {
+  if (!track) {
+    return null;
+  }
+
+  return {
+    id: track.id,
+    bvid: track.bvid,
+    cid: track.cid,
+    title: track.title,
+    artist: track.artist,
+    durationSeconds: track.durationSeconds,
+  };
+}
+
 async function readTinyBody(response: any) {
   try {
     const buffer = await response.arrayBuffer();
@@ -80,12 +109,46 @@ async function readTinyBody(response: any) {
   }
 }
 
+function stopPlayer() {
+  runSerial += 1;
+
+  try {
+    if (player) {
+      player.onReadyToPlay = undefined;
+      player.onError = undefined;
+      player.onTimeControlStatusChanged = undefined;
+      player.onEnded = undefined;
+      player.stop?.();
+      player.dispose?.();
+    }
+  } catch {}
+
+  player = null;
+}
+
+function disposeCurrentPlayerForCandidate() {
+  try {
+    if (player) {
+      player.onReadyToPlay = undefined;
+      player.onError = undefined;
+      player.onTimeControlStatusChanged = undefined;
+      player.onEnded = undefined;
+      player.stop?.();
+      player.dispose?.();
+    }
+  } catch {}
+
+  player = null;
+}
+
 function ReproApp() {
-  const [url, setUrl] = useState("");
+  const [bvid, setBvid] = useState("");
   const [referer, setReferer] = useState(DEFAULT_REFERER);
+  const [queueSummary, setQueueSummary] = useState("No BVID loaded");
+  const [currentLabel, setCurrentLabel] = useState("Idle");
   const [logs, setLogs] = useState([
     `${REPRO_VERSION}`,
-    "Paste a Bilibili m4s URL, then run probes and AVPlayer.",
+    "Input a BVID, resolve tracks, then play the minimum AVPlayer queue.",
   ]);
 
   function append(message: string, data?: unknown) {
@@ -93,54 +156,124 @@ function ReproApp() {
       data === undefined
         ? `[${now()}] ${message}`
         : `[${now()}] ${message}\n${JSON.stringify(data, null, 2)}`;
-    console.log?.("[azusa-repro]", message, data ?? "");
-    setLogs((current: string[]) => [text, ...current].slice(0, 60));
+    console.log?.("[azusa-repro][avplayer-compare]", {
+      version: REPRO_VERSION,
+      message,
+      data,
+    });
+    setLogs((current: string[]) => [text, ...current].slice(0, 120));
   }
 
-  async function runFetchProbes() {
-    if (!url.trim()) {
-      append("Missing URL");
+  function setCurrent(index: number) {
+    reproIndex = index;
+    const track = reproQueue[index];
+    setCurrentLabel(
+      track ? `${index + 1}/${reproQueue.length} ${track.title}` : "Idle",
+    );
+  }
+
+  async function resolveBvidQueue() {
+    const input = bvid.trim();
+    if (!input) {
+      append("Missing BVID");
       return;
     }
 
-    const headers = streamHeaders(referer);
+    append("resolve bvid input", { input });
+    const result = await importFromInput(input);
+    reproQueue = result.tracks;
+    setCurrent(reproQueue.length ? 0 : -1);
+    setQueueSummary(`${result.sourceTitle} · ${reproQueue.length} tracks`);
+    append("resolve bvid result", {
+      source: result.source,
+      sourceTitle: result.sourceTitle,
+      ownerName: result.ownerName,
+      trackCount: reproQueue.length,
+      tracks: reproQueue.map(summarizeTrack),
+    });
+  }
+
+  async function prepareTrack(index: number) {
+    const track = reproQueue[index];
+    if (!track) {
+      throw new Error(`No track at index ${index}`);
+    }
+
+    append("resolve track stream input", {
+      queueIndex: index,
+      track: summarizeTrack(track),
+    });
+
+    const resolved = await resolveTrackStream(track);
+    reproQueue[index] = resolved;
+    append("resolve track stream result", {
+      queueIndex: index,
+      track: summarizeTrack(resolved),
+      streamUrl: resolved.streamUrl,
+      backupStreamUrls: resolved.backupStreamUrls ?? [],
+      candidates: sourceCandidates(resolved).map((source, sourceIndex) => ({
+        sourceIndex,
+        summary: summarizeUrl(source),
+        url: source,
+      })),
+    });
+    return resolved;
+  }
+
+  async function runFetchProbeForSource(track: Track, sourceIndex: number) {
+    const source = sourceCandidates(track)[sourceIndex];
+    if (!source) {
+      append("fetch probe missing source", {
+        track: summarizeTrack(track),
+        sourceIndex,
+      });
+      return;
+    }
+
+    const headers = streamHeaders(source, referer);
     append("fetch probe input", {
-      version: REPRO_VERSION,
-      url,
-      summary: summarizeUrl(url),
+      track: summarizeTrack(track),
+      sourceIndex,
+      source,
+      summary: summarizeUrl(source),
       headerKeys: Object.keys(headers),
       headers,
       headerDump: headerDump(headers),
     });
 
     try {
-      const head = await fetch(url, {
+      const head = await fetch(source, {
         method: "HEAD",
         headers,
         timeout: 15,
-        debugLabel: "BiliM4sHeadProbe",
+        debugLabel: `ReproHead ${track.bvid}/${track.cid}#${sourceIndex}`,
       } as any);
       append("HEAD result", {
+        sourceIndex,
         status: head.status,
         contentRange: head.headers?.get?.("content-range"),
         contentLength: head.headers?.get?.("content-length"),
         acceptRanges: head.headers?.get?.("accept-ranges"),
       });
     } catch (error) {
-      append("HEAD error", String(error));
+      append("HEAD error", {
+        sourceIndex,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     try {
-      const range = await fetch(url, {
+      const range = await fetch(source, {
         method: "GET",
         headers: {
           ...headers,
           Range: "bytes=0-1",
         },
         timeout: 20,
-        debugLabel: "BiliM4sRangeProbe",
+        debugLabel: `ReproRange ${track.bvid}/${track.cid}#${sourceIndex}`,
       } as any);
       append("GET Range result", {
+        sourceIndex,
         status: range.status,
         contentRange: range.headers?.get?.("content-range"),
         contentLength: range.headers?.get?.("content-length"),
@@ -148,13 +281,53 @@ function ReproApp() {
         body: await readTinyBody(range),
       });
     } catch (error) {
-      append("GET Range error", String(error));
+      append("GET Range error", {
+        sourceIndex,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  async function runAVPlayerTest() {
-    if (!url.trim()) {
-      append("Missing URL");
+  async function runCurrentTrackProbes() {
+    const index = reproIndex >= 0 ? reproIndex : 0;
+    const track = await prepareTrack(index);
+    const candidates = sourceCandidates(track);
+
+    for (let sourceIndex = 0; sourceIndex < candidates.length; sourceIndex += 1) {
+      await runFetchProbeForSource(track, sourceIndex);
+    }
+  }
+
+  async function ensureAudioSession() {
+    try {
+      await SharedAudioSessionApi?.setCategory?.("playback");
+      await SharedAudioSessionApi?.setActive?.(true);
+      append("audio session ready");
+    } catch (error) {
+      append("audio session error", String(error));
+    }
+  }
+
+  async function playCandidate(
+    track: Track,
+    sourceIndex: number,
+    activeRun: number,
+    autoAdvance: boolean,
+  ) {
+    if (activeRun !== runSerial) return;
+
+    const candidates = sourceCandidates(track);
+    const source = candidates[sourceIndex];
+    if (!source) {
+      append("track exhausted all candidates", {
+        queueIndex: reproIndex,
+        track: summarizeTrack(track),
+        candidateCount: candidates.length,
+      });
+
+      if (autoAdvance && reproIndex + 1 < reproQueue.length) {
+        await playTrackAt(reproIndex + 1, activeRun, true);
+      }
       return;
     }
 
@@ -166,103 +339,169 @@ function ReproApp() {
       return;
     }
 
-    const headers = streamHeaders(referer);
-    append("AVPlayer input", {
-      version: REPRO_VERSION,
-      url,
-      summary: summarizeUrl(url),
+    disposeCurrentPlayerForCandidate();
+    const localPlayer = new AVPlayerCtor();
+    player = localPlayer;
+    const headers = streamHeaders(source, referer);
+
+    append("AVPlayer candidate start", {
+      run: activeRun,
+      autoAdvance,
+      queueIndex: reproIndex,
+      sourceIndex,
+      track: summarizeTrack(track),
+      source,
+      sourceSummary: summarizeUrl(source),
       headerKeys: Object.keys(headers),
       headers,
       headerDump: headerDump(headers),
     });
 
-    try {
-      await SharedAudioSessionApi?.setCategory?.("playback");
-      await SharedAudioSessionApi?.setActive?.(true);
-    } catch (error) {
-      append("Audio session error", String(error));
-    }
-
-    try {
-      player?.stop?.();
-      player?.dispose?.();
-    } catch {}
-
-    player = new AVPlayerCtor();
-    player.onReadyToPlay = () => {
+    localPlayer.onReadyToPlay = () => {
+      if (activeRun !== runSerial || player !== localPlayer) return;
       append("AVPlayer onReadyToPlay", {
-        currentTime: player?.currentTime,
-        duration: player?.duration,
-        timeControlStatus: player?.timeControlStatus,
+        run: activeRun,
+        queueIndex: reproIndex,
+        sourceIndex,
+        currentTime: localPlayer.currentTime,
+        duration: localPlayer.duration,
+        timeControlStatus: localPlayer.timeControlStatus,
       });
       try {
-        player?.play?.();
-        append("AVPlayer play() called");
+        localPlayer.play?.();
+        append("AVPlayer play() called", {
+          run: activeRun,
+          queueIndex: reproIndex,
+          sourceIndex,
+          currentTime: localPlayer.currentTime,
+          duration: localPlayer.duration,
+          timeControlStatus: localPlayer.timeControlStatus,
+        });
       } catch (error) {
-        append("AVPlayer play() error", String(error));
+        append("AVPlayer play() error", {
+          run: activeRun,
+          queueIndex: reproIndex,
+          sourceIndex,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     };
-    player.onError = (message: string) => {
+
+    localPlayer.onError = (message: string) => {
+      if (activeRun !== runSerial || player !== localPlayer) return;
       append("AVPlayer onError", {
+        run: activeRun,
+        queueIndex: reproIndex,
+        sourceIndex,
         message,
-        currentTime: player?.currentTime,
-        duration: player?.duration,
-        timeControlStatus: player?.timeControlStatus,
+        currentTime: localPlayer.currentTime,
+        duration: localPlayer.duration,
+        timeControlStatus: localPlayer.timeControlStatus,
       });
+      void playCandidate(track, sourceIndex + 1, activeRun, autoAdvance);
     };
-    player.onTimeControlStatusChanged = (status: unknown) => {
+
+    localPlayer.onTimeControlStatusChanged = (status: unknown) => {
+      if (activeRun !== runSerial || player !== localPlayer) return;
       append("AVPlayer status", {
+        run: activeRun,
+        queueIndex: reproIndex,
+        sourceIndex,
         status,
-        currentTime: player?.currentTime,
-        duration: player?.duration,
+        currentTime: localPlayer.currentTime,
+        duration: localPlayer.duration,
       });
     };
-    player.onEnded = () => {
-      append("AVPlayer ended");
+
+    localPlayer.onEnded = () => {
+      if (activeRun !== runSerial || player !== localPlayer) return;
+      append("AVPlayer ended", {
+        run: activeRun,
+        queueIndex: reproIndex,
+        sourceIndex,
+      });
+      if (autoAdvance && reproIndex + 1 < reproQueue.length) {
+        void playTrackAt(reproIndex + 1, activeRun, true);
+      }
     };
 
     const attempts = [
       {
         label: "setSource(url, { headers })",
-        run: () => player!.setSource(url, { headers }),
+        run: () => localPlayer.setSource(source, { headers }),
       },
       {
         label: "setSource({ url, headers })",
-        run: () => player!.setSource({ url, headers }),
+        run: () => localPlayer.setSource({ url: source, headers }),
       },
       {
         label: "setSource(url)",
-        run: () => player!.setSource(url),
+        run: () => localPlayer.setSource(source),
       },
     ];
 
     for (const attempt of attempts) {
       try {
         const result = attempt.run();
-        append(attempt.label, { result });
+        append("AVPlayer setSource attempt", {
+          run: activeRun,
+          queueIndex: reproIndex,
+          sourceIndex,
+          label: attempt.label,
+          result,
+        });
         if (result) {
           return;
         }
       } catch (error) {
-        append(`${attempt.label} threw`, String(error));
+        append("AVPlayer setSource threw", {
+          run: activeRun,
+          queueIndex: reproIndex,
+          sourceIndex,
+          label: attempt.label,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
+
+    await playCandidate(track, sourceIndex + 1, activeRun, autoAdvance);
   }
 
-  async function runFullTest() {
-    await runFetchProbes();
-    await runAVPlayerTest();
+  async function playTrackAt(
+    index: number,
+    activeRun = ++runSerial,
+    autoAdvance = false,
+  ) {
+    if (!reproQueue.length) {
+      await resolveBvidQueue();
+    }
+
+    if (index < 0 || index >= reproQueue.length) {
+      append("play index out of range", {
+        index,
+        queueLength: reproQueue.length,
+      });
+      return;
+    }
+
+    setCurrent(index);
+    await ensureAudioSession();
+    const track = await prepareTrack(index);
+    if (activeRun !== runSerial) return;
+    await playCandidate(track, 0, activeRun, autoAdvance);
   }
 
   return (
     <Form formStyle="grouped">
-      <Section header={<Text>AVPlayer Bili m4s minimum repro</Text>}>
+      <Section header={<Text>AVPlayer BVID queue repro</Text>}>
         <Text>{REPRO_VERSION}</Text>
+        <Text>{queueSummary}</Text>
+        <Text>{currentLabel}</Text>
         <TextField
-          title="m4s URL"
-          placeholder="Paste Bilibili m4s URL"
-          value={url}
-          onChanged={setUrl}
+          title="BVID"
+          placeholder="BV..."
+          value={bvid}
+          onChanged={setBvid}
         />
         <TextField
           title="Referer"
@@ -270,18 +509,26 @@ function ReproApp() {
           value={referer}
           onChanged={setReferer}
         />
-        <Button title="Run fetch probes" action={() => void runFetchProbes()} />
-        <Button title="Run AVPlayer test" action={() => void runAVPlayerTest()} />
-        <Button title="Run full repro" action={() => void runFullTest()} />
+        <Button title="Resolve BVID" action={() => void resolveBvidQueue()} />
+        <Button
+          title="Probe current track"
+          action={() => void runCurrentTrackProbes()}
+        />
+        <Button title="Play first track" action={() => void playTrackAt(0)} />
+        <Button
+          title="Play queue continuously"
+          action={() => void playTrackAt(0, ++runSerial, true)}
+        />
+        <Button
+          title="Next track"
+          action={() => void playTrackAt(reproIndex + 1)}
+        />
         <Button
           title="Stop player"
           action={() => {
-            try {
-              player?.stop?.();
-              append("Player stopped");
-            } catch (error) {
-              append("Stop error", String(error));
-            }
+            stopPlayer();
+            setCurrent(-1);
+            append("Player stopped");
           }}
         />
       </Section>

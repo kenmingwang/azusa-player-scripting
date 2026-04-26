@@ -235,6 +235,12 @@ class AzusaScriptingPlayer {
     }
 
     const loadToken = ++this.loadToken;
+    this.logPlaybackEvent("play-index-start", {
+      loadToken,
+      index,
+      queueLength: this.queue.length,
+      track: this.queue[index],
+    });
     this.disposeNativePlayer();
     this.shouldBePlaying = true;
     this.currentIndex = index;
@@ -260,6 +266,14 @@ class AzusaScriptingPlayer {
     if (loadToken !== this.loadToken) return;
     this.queue[index] = track;
     this.bindings.onQueueChange?.([...this.queue]);
+    this.logPlaybackEvent("track-prepared", {
+      loadToken,
+      index,
+      track,
+      sourceCandidates: this.collectSourceCandidates(track).map((source) =>
+        this.summarizeSource(source),
+      ),
+    });
 
     this.readyToPlayHandler = (player: any, generation: number) => {
       if (!this.isActiveNativePlayer(player, generation)) return;
@@ -269,6 +283,13 @@ class AzusaScriptingPlayer {
       this.shouldBePlaying = true;
       try {
         player.play();
+        this.logPlaybackEvent("native-play-called", {
+          loadToken,
+          generation,
+          currentTime: player.currentTime,
+          duration: player.duration,
+          timeControlStatus: player.timeControlStatus,
+        });
       } catch (error) {
         void this.handlePlaybackError(
           error instanceof Error ? error.message : String(error),
@@ -446,6 +467,7 @@ class AzusaScriptingPlayer {
     const generation = ++this.playerGeneration;
     this.player = player;
     this.attachNativePlayerHandlers(player, generation);
+    this.logPlaybackEvent("native-player-created", { generation });
     return { player, generation };
   }
 
@@ -455,6 +477,13 @@ class AzusaScriptingPlayer {
     this.playerGeneration += 1;
 
     if (!player) return;
+
+    this.logPlaybackEvent("native-player-dispose", {
+      generation: this.playerGeneration,
+      currentTime: player.currentTime,
+      duration: player.duration,
+      timeControlStatus: player.timeControlStatus,
+    });
 
     try {
       player.onReadyToPlay = undefined;
@@ -479,11 +508,23 @@ class AzusaScriptingPlayer {
   private attachNativePlayerHandlers(player: any, generation: number) {
     player.onReadyToPlay = () => {
       if (!this.isActiveNativePlayer(player, generation)) return;
+      this.logPlaybackEvent("native-ready", {
+        generation,
+        currentTime: player.currentTime,
+        duration: player.duration,
+        timeControlStatus: player.timeControlStatus,
+      });
       this.readyToPlayHandler?.(player, generation);
     };
 
     player.onTimeControlStatusChanged = (status: any) => {
       if (!this.isActiveNativePlayer(player, generation)) return;
+      this.logPlaybackEvent("native-status", {
+        generation,
+        status,
+        currentTime: player.currentTime,
+        duration: player.duration,
+      });
 
       if (status === TimeControlStatusApi?.waitingToPlayAtSpecifiedRate) {
         if (this.shouldBePlaying) {
@@ -510,11 +551,25 @@ class AzusaScriptingPlayer {
 
     player.onEnded = () => {
       if (!this.isActiveNativePlayer(player, generation)) return;
+      this.logPlaybackEvent("native-ended", {
+        generation,
+        currentTrack: this.getCurrentTrack(),
+        currentIndex: this.currentIndex,
+      });
       void this.handleTrackEnded();
     };
 
     player.onError = (message: string) => {
       if (!this.isActiveNativePlayer(player, generation)) return;
+      this.logPlaybackEvent("native-error", {
+        generation,
+        message,
+        currentTime: player.currentTime,
+        duration: player.duration,
+        timeControlStatus: player.timeControlStatus,
+        source: this.currentSource(),
+        sourceAttemptIndex: this.sourceAttemptIndex,
+      });
       void this.handlePlaybackError(message);
     };
   }
@@ -704,10 +759,6 @@ class AzusaScriptingPlayer {
   }
 
   private tryLoadCurrentSourceCandidate() {
-    if (!this.player) {
-      return false;
-    }
-
     while (this.sourceAttemptIndex < this.sourceCandidates.length) {
       const source = this.sourceCandidates[this.sourceAttemptIndex];
       this.disposeNativePlayer();
@@ -734,18 +785,47 @@ class AzusaScriptingPlayer {
 
     const attempts = headers
       ? [
-          () => this.player!.setSource(source, { headers }),
-          () => this.player!.setSource({ url: source, headers }),
-          () => this.player!.setSource(source),
+          {
+            label: "setSource(url, { headers })",
+            run: () => this.player!.setSource(source, { headers }),
+          },
+          {
+            label: "setSource({ url, headers })",
+            run: () => this.player!.setSource({ url: source, headers }),
+          },
+          {
+            label: "setSource(url)",
+            run: () => this.player!.setSource(source),
+          },
         ]
-      : [() => this.player!.setSource(source)];
+      : [
+          {
+            label: "setSource(url)",
+            run: () => this.player!.setSource(source),
+          },
+        ];
 
     for (const attempt of attempts) {
       try {
-        if (attempt()) {
+        const result = attempt.run();
+        this.logPlaybackEvent("set-source-attempt", {
+          label: attempt.label,
+          result,
+          source,
+          sourceSummary: this.summarizeSource(source),
+          sourceAttemptIndex: this.sourceAttemptIndex,
+          headers,
+        });
+        if (result) {
           return true;
         }
       } catch (error) {
+        this.logPlaybackEvent("set-source-throw", {
+          label: attempt.label,
+          source,
+          sourceSummary: this.summarizeSource(source),
+          error: error instanceof Error ? error.message : String(error),
+        });
         this.lastSourceDebug = `${this.describeCurrentSource(source, headers)} · setSource ${
           error instanceof Error ? error.message : String(error)
         }`;
@@ -753,6 +833,23 @@ class AzusaScriptingPlayer {
     }
 
     return false;
+  }
+
+  private logPlaybackEvent(event: string, data: Record<string, unknown> = {}) {
+    console.log?.("[azusa-player][avplayer-compare]", {
+      diagnosticVersion: STREAM_DIAGNOSTIC_VERSION,
+      event,
+      playbackState: this.playbackState,
+      shouldBePlaying: this.shouldBePlaying,
+      currentIndex: this.currentIndex,
+      loadedTrackId: this.loadedTrackId,
+      activeTrackId: this.activeTrackId,
+      sourceAttemptIndex: this.sourceAttemptIndex,
+      currentSourceSummary: this.currentSource()
+        ? this.summarizeSource(this.currentSource())
+        : "",
+      ...data,
+    });
   }
 
   private describeCurrentSource(
