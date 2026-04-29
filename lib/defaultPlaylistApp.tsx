@@ -1464,6 +1464,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const playlistBridge = useMemo(
     () => ({
       activePlaylistId: persistedState.activePlaylistId ?? initialPlaylist?.id ?? "",
+      transientQueue: false,
     }),
     [],
   );
@@ -1500,6 +1501,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   const [scenePhase, setScenePhase] = useState("active");
   const [activeTab, setActiveTab] = useState("player" as AzusaTab);
   const [showPlayerLyrics, setShowPlayerLyrics] = useState(false);
+  const [queueTracks, setQueueTracks] = useState(initialTracks);
   const [keepAliveState, setKeepAliveState] = useState(
     ScriptApi?.env === "index" ? "idle" : "unsupported",
   );
@@ -1510,7 +1512,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       null,
     [playlistLibrary, activePlaylistId],
   );
-  const tracks = activePlaylist?.tracks ?? [];
+  const playlistTracks = activePlaylist?.tracks ?? [];
+  const tracks = queueTracks;
   const sourceTitle =
     activePlaylist?.title || initialSnapshot?.sourceTitle || initialSource.titleHint || "Azusa";
   const ownerName = activePlaylist?.ownerName || initialSnapshot?.ownerName || "";
@@ -1534,6 +1537,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     playlist: PlaylistRecord | null,
     preserveTrackId?: string | null,
   ) {
+    playlistBridge.transientQueue = false;
+    setQueueTracks(playlist?.tracks ?? []);
     const matchedTrackId =
       preserveTrackId &&
       playlist?.tracks.some((track) => track.id === preserveTrackId)
@@ -1664,6 +1669,16 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     applyPlaylistToPlayer(getActivePlaylist(nextState), null);
   }
 
+  async function handleCreatePlaylistWithTracks(title: string, nextTracks: Track[]) {
+    const previousActivePlaylistId = activePlaylistId;
+    createPlaylist(title, nextTracks);
+    let nextState = loadState();
+    if (previousActivePlaylistId) {
+      nextState = setActivePlaylist(previousActivePlaylistId);
+    }
+    syncFromState(nextState);
+  }
+
   async function handleRenamePlaylist(playlistId: string, title: string) {
     const nextState = renamePlaylist(playlistId, title);
     syncFromState(nextState);
@@ -1715,6 +1730,34 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   async function handleAddPlaylistToTitle(playlistId: string, title: string) {
     const playlist = getPlaylistById(playlistId);
     await addTracksByTitle(title, playlist?.tracks ?? []);
+  }
+
+  async function playTracksNow(nextTracks: Track[]) {
+    if (!nextTracks.length) {
+      return;
+    }
+
+    setPlayLoading(true);
+    setError(null);
+
+    try {
+      const sameAsActivePlaylist =
+        nextTracks.length === playlistTracks.length &&
+        nextTracks.every((track, index) => track.id === playlistTracks[index]?.id);
+      playlistBridge.transientQueue = !sameAsActivePlaylist;
+      setQueueTracks(nextTracks);
+      player.setQueue(nextTracks);
+      await player.playIndex(0);
+      setActiveTab("player");
+    } catch (playError) {
+      setError(
+        `开始播放失败: ${
+          playError instanceof Error ? playError.message : String(playError)
+        }`,
+      );
+    } finally {
+      setPlayLoading(false);
+    }
   }
 
   async function handleRenameTrack(track: Track) {
@@ -1916,7 +1959,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     player.setPlaybackMode(playbackMode);
     player.bind({
       onQueueChange: (queue) => {
-        if (playlistBridge.activePlaylistId) {
+        setQueueTracks(queue);
+        if (playlistBridge.activePlaylistId && !playlistBridge.transientQueue) {
           const nextState = replacePlaylistTracks(playlistBridge.activePlaylistId, queue);
           syncFromState(nextState);
         }
@@ -2172,7 +2216,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             defaultQuery={playbackSource.input}
             onSearchInput={async (input) => {
               await loadSourceFromInput(input);
-              setActiveTab("player");
             }}
             onOpenPlaylist={async (playlistId) => {
               await openPlaylist(playlistId);
@@ -2184,9 +2227,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             onRefreshPlaylist={refreshPlaylistSource}
             onDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
             onAddPlaylistToTitle={handleAddPlaylistToTitle}
+            onPlayTracks={playTracksNow}
+            onAddTracksToTitle={addTracksByTitle}
+            onCreatePlaylistWithTracks={handleCreatePlaylistWithTracks}
             onLoadSource={async (source) => {
               await importSourceToSearch(source);
-              setActiveTab("player");
             }}
           />
         ) : null}
@@ -2277,7 +2322,6 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             defaultQuery={playbackSource.input}
             onSearchInput={async (input) => {
               await loadSourceFromInput(input);
-              setActiveTab("player");
             }}
             onOpenPlaylist={async (playlistId) => {
               await openPlaylist(playlistId);
@@ -2289,9 +2333,11 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             onRefreshPlaylist={refreshPlaylistSource}
             onDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
             onAddPlaylistToTitle={handleAddPlaylistToTitle}
+            onPlayTracks={playTracksNow}
+            onAddTracksToTitle={addTracksByTitle}
+            onCreatePlaylistWithTracks={handleCreatePlaylistWithTracks}
             onLoadSource={async (source) => {
               await importSourceToSearch(source);
-              setActiveTab("player");
             }}
           />
         ) : null}
