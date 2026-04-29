@@ -2,6 +2,7 @@ import {
   Button,
   Dialog,
   HStack,
+  Image,
   LazyVStack,
   ScrollView,
   Spacer,
@@ -307,6 +308,37 @@ function RecentSourceRow(props: {
   );
 }
 
+function SourceSearchBox(props: {
+  value: string;
+  onChanged: (value: string) => void;
+}) {
+  return (
+    <HStack
+      spacing={12}
+      padding={{ horizontal: 14, vertical: 12 }}
+      background={azusaGlassBackground("strong", 22)}>
+      <Image
+        systemName="magnifyingglass"
+        resizable
+        aspectRatio={{ contentMode: "fit" }}
+        frame={{ width: 22, height: 22 }}
+        foregroundColor={"systemBlue"}
+      />
+      <VStack alignment={"leading"} spacing={5}>
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          输入 BV / 链接 / 收藏夹 ID
+        </Text>
+        <TextField
+          title="搜索来源"
+          placeholder="例如 BV1YQpfzwECM"
+          value={props.value}
+          onChanged={props.onChanged}
+        />
+      </VStack>
+    </HStack>
+  );
+}
+
 export function SourceLibraryPage(props: SourceLibraryPageProps) {
   const mode = props.mode ?? "all";
   const [query, setQuery] = useState(props.defaultQuery ?? "");
@@ -362,12 +394,7 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
               subtitle="导入 BV、收藏夹、合集、频道，生成当前播放歌单。"
             />
             <GlassPanel tone="accent">
-              <TextField
-                title="来源"
-                placeholder="BV / 视频链接 / 收藏夹 / 合集 / 频道"
-                value={query}
-                onChanged={setQuery}
-              />
+              <SourceSearchBox value={query} onChanged={setQuery} />
               <Text font={"caption"} foregroundColor={"secondary"}>
                 支持 BV、视频链接、收藏夹 ID、收藏夹链接、season / series、channel / UP 主页。
               </Text>
