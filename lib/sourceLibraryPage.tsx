@@ -2,7 +2,6 @@ import {
   Button,
   Dialog,
   HStack,
-  Image,
   LazyVStack,
   ScrollView,
   Spacer,
@@ -15,6 +14,15 @@ import {
 } from "scripting";
 
 import { ArtworkView } from "./artworkView";
+import {
+  AzusaHeader,
+  GlassPanel,
+  IconLabel,
+  IconPillButton,
+  StatusChip,
+  azusaGlassBackground,
+  azusaPageBackground,
+} from "./azusaTheme";
 import {
   sourceKindLabel,
   sourceSecondaryLabel,
@@ -60,16 +68,25 @@ function playlistSummary(playlist: PlaylistRecord) {
   return `${playlistKindLabel(playlist)} · ${playlist.tracks.length} 首${sourceLabel}`;
 }
 
+function shortMessage(message?: string | null) {
+  if (!message) {
+    return "";
+  }
+
+  const firstLine = message.split("\n")[0]?.trim() ?? message.trim();
+  return firstLine.length > 48 ? `${firstLine.slice(0, 48)}...` : firstLine;
+}
+
 function PlaylistArtwork(props: { playlist: PlaylistRecord; active?: boolean }) {
   return (
     <ArtworkView
       cover={props.playlist.cover}
-      width={58}
-      height={58}
+      width={64}
+      height={64}
       contentMode="fill"
       backgroundStyle="none"
-      cornerRadius={12}
-      fallbackColor={props.active ? "systemBlue" : "systemGray3"}
+      cornerRadius={14}
+      fallbackColor={props.active ? "systemBlue" : "systemPurple"}
     />
   );
 }
@@ -142,17 +159,17 @@ function PlaylistActionButtons(props: {
   return (
     <HStack spacing={8}>
       {props.playlist.kind !== "user" ? (
-        <Button
+        <IconPillButton
           title={props.loading ? "处理中..." : "刷新"}
-          buttonStyle="bordered"
+          systemName="arrow.clockwise"
           action={() => void props.onRefreshPlaylist(props.playlist.id)}
         />
       ) : null}
-      <Button title="另存为" buttonStyle="bordered" action={() => void promptDuplicate()} />
-      <Button title="整单加入" buttonStyle="bordered" action={() => void promptAddToPlaylist()} />
-      <Button title="重命名" buttonStyle="bordered" action={() => void promptRename()} />
+      <IconPillButton title="另存为" systemName="plus.square.on.square" action={() => void promptDuplicate()} />
+      <IconPillButton title="整单加入" systemName="text.badge.plus" action={() => void promptAddToPlaylist()} />
+      <IconPillButton title="重命名" systemName="pencil" action={() => void promptRename()} />
       {props.playlist.kind === "user" ? (
-        <Button title="删除" buttonStyle="bordered" action={() => void promptDelete()} />
+        <IconPillButton title="删除" systemName="trash" action={() => void promptDelete()} />
       ) : null}
     </HStack>
   );
@@ -173,7 +190,11 @@ function PlaylistRow(props: {
   const [showActions, setShowActions] = useState(false);
 
   return (
-    <VStack alignment={"leading"} spacing={10}>
+    <VStack
+      alignment={"leading"}
+      spacing={10}
+      padding={{ horizontal: 12, vertical: 12 }}
+      background={azusaGlassBackground(props.active ? "accent" : "soft", 20)}>
       <HStack spacing={12}>
         <Button action={() => void props.onOpenPlaylist(props.playlist.id)}>
           <HStack spacing={12}>
@@ -181,19 +202,24 @@ function PlaylistRow(props: {
             <VStack alignment={"leading"} spacing={4}>
               <Text
                 font={props.active ? "headline" : "body"}
-                foregroundColor={props.active ? "systemBlue" : "primary"}>
+                foregroundColor={"primary"}>
                 {props.playlist.title}
               </Text>
               <Text font={"caption"} foregroundColor={"secondary"}>
                 {playlistSummary(props.playlist)}
               </Text>
+              {props.active ? (
+                <Text font={"caption2"} foregroundColor={"systemBlue"}>
+                  正在使用
+                </Text>
+              ) : null}
             </VStack>
           </HStack>
         </Button>
         <Spacer />
-        <Button
-          title={showActions ? "收起" : "管理"}
-          buttonStyle="bordered"
+        <IconPillButton
+          title={showActions ? "收起" : "更多"}
+          systemName="ellipsis"
           action={() => setShowActions((current) => !current)}
         />
       </HStack>
@@ -227,13 +253,15 @@ function PlaylistGroup(props: {
 }) {
   return (
     <VStack alignment={"leading"} spacing={12}>
-      <Text font={"caption"} foregroundColor={"secondary"}>
+      <Text font={"headline"}>
         {props.title}
       </Text>
       {!props.playlists.length ? (
-        <Text font={"subheadline"} foregroundColor={"secondary"}>
-          {props.emptyText ?? "暂无歌单"}
-        </Text>
+        <GlassPanel compact tone="soft">
+          <Text font={"subheadline"} foregroundColor={"secondary"}>
+            {props.emptyText ?? "暂无歌单"}
+          </Text>
+        </GlassPanel>
       ) : (
         props.playlists.map((playlist) => (
           <PlaylistRow
@@ -261,19 +289,15 @@ function RecentSourceRow(props: {
 }) {
   return (
     <Button action={() => void props.onLoadSource(props.source)} key={props.source.input}>
-      <HStack spacing={12}>
-        <Image
+      <HStack
+        spacing={12}
+        padding={{ horizontal: 12, vertical: 10 }}
+        background={azusaGlassBackground("soft", 18)}>
+        <IconLabel
           systemName="clock.arrow.circlepath"
-          resizable
-          aspectRatio={{ contentMode: "fit" }}
-          frame={{ width: 22, height: 22 }}
+          title={sourceShortLabel(props.source)}
+          subtitle={`${sourceKindLabel(props.source.kind)} · ${sourceSecondaryLabel(props.source)}`}
         />
-        <VStack alignment={"leading"} spacing={3}>
-          <Text font={"body"}>{sourceShortLabel(props.source)}</Text>
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            {sourceKindLabel(props.source.kind)} · {sourceSecondaryLabel(props.source)}
-          </Text>
-        </VStack>
         <Spacer />
         <Text font={"caption"} foregroundColor={"systemBlue"}>
           导入
@@ -324,44 +348,50 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
     <ScrollView
       navigationTitle={mode === "search" ? "搜索" : "歌单库"}
       navigationBarTitleDisplayMode={"inline"}
-      scrollDismissesKeyboard={"interactively"}>
+      scrollDismissesKeyboard={"interactively"}
+      background={azusaPageBackground()}>
       <LazyVStack
         alignment={"leading"}
         spacing={22}
         padding={{ horizontal: 16, vertical: 16 }}>
         {showSearch ? (
           <VStack alignment={"leading"} spacing={14}>
-            <Text font={"title2"}>搜索</Text>
-            <TextField
-              title="来源"
-              placeholder="BV / 视频链接 / 收藏夹 / 合集 / 频道"
-              value={query}
-              onChanged={setQuery}
+            <AzusaHeader
+              eyebrow="Azusa import"
+              title="搜索"
+              subtitle="导入 BV、收藏夹、合集、频道，生成当前播放歌单。"
             />
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              支持 BV、视频链接、收藏夹 ID、收藏夹链接、season / series 链接、channel / UP 主页链接。
-            </Text>
-            <HStack spacing={10}>
-              <Button
-                title={props.loading ? "导入中..." : "导入"}
-                buttonStyle="borderedProminent"
-                action={() => void props.onSearchInput(query)}
+            <GlassPanel tone="accent">
+              <TextField
+                title="来源"
+                placeholder="BV / 视频链接 / 收藏夹 / 合集 / 频道"
+                value={query}
+                onChanged={setQuery}
               />
-              <Button
-                title="新建歌单"
-                buttonStyle="bordered"
-                action={() => void promptCreatePlaylist()}
-              />
-            </HStack>
-            {props.errorMessage ? (
-              <Text font={"caption"} foregroundColor={"systemRed"}>
-                {props.errorMessage}
+              <Text font={"caption"} foregroundColor={"secondary"}>
+                支持 BV、视频链接、收藏夹 ID、收藏夹链接、season / series、channel / UP 主页。
               </Text>
+              <HStack spacing={10}>
+                <IconPillButton
+                  title={props.loading ? "导入中..." : "导入并播放"}
+                  systemName="square.and.arrow.down"
+                  prominent
+                  action={() => void props.onSearchInput(query)}
+                />
+                <IconPillButton
+                  title="新建歌单"
+                  systemName="plus"
+                  action={() => void promptCreatePlaylist()}
+                />
+              </HStack>
+            </GlassPanel>
+            {props.errorMessage ? (
+              <StatusChip title={shortMessage(props.errorMessage)} tone="red" />
             ) : null}
 
             {searchPlaylist ? (
               <VStack alignment={"leading"} spacing={12}>
-                <Text font={"caption"} foregroundColor={"secondary"}>
+                <Text font={"headline"}>
                   当前搜索歌单
                 </Text>
                 <PlaylistRow
@@ -380,7 +410,7 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
 
             {props.recentSources.length > 0 ? (
               <VStack alignment={"leading"} spacing={12}>
-                <Text font={"caption"} foregroundColor={"secondary"}>
+                <Text font={"headline"}>
                   最近来源
                 </Text>
                 {props.recentSources.map((source) => (
@@ -397,20 +427,18 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
 
         {showLibrary ? (
           <VStack alignment={"leading"} spacing={20}>
-            <HStack spacing={10}>
-              <VStack alignment={"leading"} spacing={4}>
-                <Text font={"title2"}>歌单库</Text>
-                <Text font={"caption"} foregroundColor={"secondary"}>
-                  {props.playlists.length} 个歌单
-                </Text>
-              </VStack>
-              <Spacer />
-              <Button
-                title="新建"
-                buttonStyle="bordered"
-                action={() => void promptCreatePlaylist()}
-              />
-            </HStack>
+            <AzusaHeader
+              eyebrow="Azusa library"
+              title="歌单库"
+              subtitle={`${props.playlists.length} 个歌单`}
+              trailing={
+                <IconPillButton
+                  title="新建"
+                  systemName="plus"
+                  action={() => void promptCreatePlaylist()}
+                />
+              }
+            />
 
             {searchPlaylist ? (
               <PlaylistGroup

@@ -17,6 +17,12 @@ import {
 
 import { activeLyricLineIndex, parseLyrics } from "./lyrics";
 import {
+  GlassPanel,
+  IconPillButton,
+  StatusChip,
+  azusaGlassBackground,
+} from "./azusaTheme";
+import {
   extractSongName,
   fetchLyricBySongMid,
   searchLyricOptions,
@@ -337,29 +343,19 @@ export function InlineLyricsPanel(props: InlineLyricsPanelProps) {
       background={
         props.compact
           ? undefined
-          : {
-              style: {
-                light: "rgba(244, 246, 250, 0.9)",
-                dark: "rgba(255, 255, 255, 0.035)",
-              },
-              shape: {
-                type: "rect",
-                cornerRadius: 24,
-                style: "continuous",
-              },
-            }
+          : azusaGlassBackground("base", 24)
       }>
       <VStack alignment={"center"} spacing={5}>
         {props.onShowArtwork ? (
-          <Button
+          <IconPillButton
             title="返回封面"
-            buttonStyle="bordered"
+            systemName="rectangle.portrait"
             action={() => props.onShowArtwork?.()}
           />
         ) : null}
         <Text font={"headline"}>{displayTrackTitle(props.track)}</Text>
         <Text font={"caption"} foregroundColor={"secondary"}>
-          {props.track?.artist || "Azusa"} · {lyricSource} · 偏移 {offsetMs}ms
+          {props.track?.artist || "Azusa"} · {lyricSource}
         </Text>
       </VStack>
 
@@ -402,36 +398,37 @@ export function InlineLyricsPanel(props: InlineLyricsPanelProps) {
 
       <VStack alignment={"leading"} spacing={10}>
         <HStack spacing={8}>
-          <Button
+          <IconPillButton
             title={showSearch ? "收起搜索" : "搜索歌词"}
-            buttonStyle="borderedProminent"
+            systemName="magnifyingglass"
+            prominent
             action={() => setShowSearch((current) => !current)}
           />
-          <Button
+          <IconPillButton
             title={busy ? "处理中..." : "导入"}
-            buttonStyle="bordered"
+            systemName="doc.text"
             action={() => void importLyricsFile()}
           />
           {rawLyrics ? (
-            <Button
+            <IconPillButton
               title="清除"
-              buttonStyle="bordered"
+              systemName="trash"
               action={() => void clearLyrics()}
             />
           ) : null}
         </HStack>
 
         {showSearch ? (
-          <VStack alignment={"leading"} spacing={10}>
+          <GlassPanel compact tone="soft">
             <TextField
               title="关键词"
               placeholder="歌名 / 歌手"
               value={searchText}
               onChanged={setSearchText}
             />
-            <Button
+            <IconPillButton
               title={searching ? "搜索中..." : "重新搜索"}
-              buttonStyle="bordered"
+              systemName="arrow.clockwise"
               action={() => setSearchNonce((current) => current + 1)}
             />
             {!options.length ? (
@@ -453,21 +450,19 @@ export function InlineLyricsPanel(props: InlineLyricsPanelProps) {
                 })}
               </VStack>
             )}
-          </VStack>
+          </GlassPanel>
         ) : null}
 
         <HStack spacing={8}>
-          <Button title="-100ms" buttonStyle="bordered" action={() => adjustOffset(-100)} />
-          <Button title="-50ms" buttonStyle="bordered" action={() => adjustOffset(-50)} />
-          <Button title="归零" buttonStyle="bordered" action={resetOffset} />
-          <Button title="+50ms" buttonStyle="bordered" action={() => adjustOffset(50)} />
-          <Button title="+100ms" buttonStyle="bordered" action={() => adjustOffset(100)} />
+          <IconPillButton title="-100" action={() => adjustOffset(-100)} />
+          <IconPillButton title="-50" action={() => adjustOffset(-50)} />
+          <IconPillButton title="归零" action={resetOffset} />
+          <IconPillButton title="+50" action={() => adjustOffset(50)} />
+          <IconPillButton title="+100" action={() => adjustOffset(100)} />
         </HStack>
 
         {message ? (
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            {message}
-          </Text>
+          <StatusChip title={message} />
         ) : null}
       </VStack>
     </VStack>

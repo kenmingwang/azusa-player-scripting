@@ -311,7 +311,7 @@ class AzusaScriptingPlayer {
       this.bindings.onCurrentTrackChange?.(this.queue[this.currentIndex], this.currentIndex);
     };
 
-    if (!this.loadPreparedTrack(track)) {
+    if (!this.loadPreparedTrack(track) && !(await this.tryLoadCurrentSourceViaLocalCache(track))) {
       throw new Error(
         `播放器无法装载音频源${this.lastSourceDebug ? `：${this.lastSourceDebug}` : ""}`,
       );

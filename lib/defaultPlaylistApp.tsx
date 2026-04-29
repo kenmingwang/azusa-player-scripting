@@ -22,6 +22,14 @@ import {
 import { importFromSource } from "./api";
 import { ArtworkView } from "./artworkView";
 import {
+  AzusaPage,
+  GlassPanel,
+  IconLabel,
+  StatusChip,
+  azusaGlassBackground,
+  azusaPageBackground,
+} from "./azusaTheme";
+import {
   buildPlaybackSnapshot,
   reloadExternalSurfaces,
   toLiveActivityState,
@@ -206,6 +214,15 @@ function formatDuration(seconds?: number) {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+function shortPlaybackDetail(detail?: string) {
+  if (!detail) {
+    return "";
+  }
+
+  const firstLine = detail.split("\n")[0]?.trim() ?? detail.trim();
+  return firstLine.length > 42 ? `${firstLine.slice(0, 42)}...` : firstLine;
+}
+
 type AzusaTab = "search" | "player" | "library";
 
 const AZUSA_TABS: Array<{
@@ -214,8 +231,8 @@ const AZUSA_TABS: Array<{
   systemName: string;
 }> = [
   { id: "search", title: "搜索", systemName: "magnifyingglass" },
-  { id: "player", title: "播放", systemName: "play.circle" },
-  { id: "library", title: "歌单", systemName: "folder" },
+  { id: "player", title: "播放", systemName: "play.circle.fill" },
+  { id: "library", title: "歌单", systemName: "folder.fill" },
 ];
 
 function AppTabBar(props: {
@@ -224,12 +241,12 @@ function AppTabBar(props: {
 }) {
   return (
     <HStack
-      spacing={8}
-      padding={{ horizontal: 14, vertical: 10 }}
+      spacing={10}
+      padding={{ horizontal: 18, vertical: 12 }}
       background={{
         style: {
-          light: "rgba(250, 250, 252, 0.96)",
-          dark: "rgba(28, 28, 30, 0.96)",
+          light: "rgba(255, 255, 255, 0.86)",
+          dark: "rgba(22, 19, 31, 0.92)",
         },
       }}>
       {AZUSA_TABS.map((item) => {
@@ -241,13 +258,13 @@ function AppTabBar(props: {
             buttonStyle={isActive ? "borderedProminent" : "bordered"}
             action={() => props.onChange(item.id)}>
             <VStack
-              spacing={3}
-              padding={{ horizontal: 8, vertical: 4 }}>
+              spacing={4}
+              padding={{ horizontal: 12, vertical: 7 }}>
               <Image
                 systemName={item.systemName}
                 resizable
                 aspectRatio={{ contentMode: "fit" }}
-                frame={{ width: 18, height: 18 }}
+                frame={{ width: isActive ? 21 : 18, height: isActive ? 21 : 18 }}
               />
               <Text font={"caption2"}>{item.title}</Text>
             </VStack>
@@ -264,52 +281,17 @@ function AppPage(props: {
   children?: any;
 }) {
   return (
-    <ScrollView
-      navigationTitle={props.title}
-      navigationBarTitleDisplayMode={"inline"}>
-      <LazyVStack
-        alignment={"leading"}
-        spacing={18}
-        padding={{ horizontal: 16, vertical: 14 }}>
-        <VStack alignment={"leading"} spacing={4}>
-          <Text font={"title2"}>{props.title}</Text>
-          {props.subtitle ? (
-            <Text font={"caption"} foregroundColor={"secondary"}>
-              {props.subtitle}
-            </Text>
-          ) : null}
-        </VStack>
-        {props.children}
-        <VStack spacing={1} />
-      </LazyVStack>
-    </ScrollView>
+    <AzusaPage title={props.title} subtitle={props.subtitle}>
+      {props.children}
+    </AzusaPage>
   );
 }
 
 function SectionCard(props: { children?: any; accent?: boolean }) {
   return (
-    <VStack
-      alignment={"leading"}
-      spacing={14}
-      padding={{ horizontal: 16, vertical: 16 }}
-      background={{
-        style: props.accent
-          ? {
-              light: "rgba(239, 246, 255, 0.95)",
-              dark: "rgba(37, 99, 235, 0.16)",
-            }
-          : {
-              light: "rgba(248, 250, 252, 0.94)",
-              dark: "rgba(255, 255, 255, 0.055)",
-            },
-        shape: {
-          type: "rect",
-          cornerRadius: 20,
-          style: "continuous",
-        },
-      }}>
+    <GlassPanel tone={props.accent ? "accent" : "base"}>
       {props.children}
-    </VStack>
+    </GlassPanel>
   );
 }
 
@@ -321,20 +303,11 @@ function PrimaryActionRow(props: {
 }) {
   return (
     <HStack spacing={12}>
-      <Image
+      <IconLabel
         systemName={props.systemName}
-        resizable
-        aspectRatio={{ contentMode: "fit" }}
-        frame={{ width: 20, height: 20 }}
+        title={props.title}
+        subtitle={props.subtitle}
       />
-      <VStack alignment={"leading"} spacing={3}>
-        <Text font={"body"}>{props.title}</Text>
-        {props.subtitle ? (
-          <Text font={"caption"} foregroundColor={"secondary"}>
-            {props.subtitle}
-          </Text>
-        ) : null}
-      </VStack>
       <Spacer />
       {props.trailing ? (
         <Text font={"caption"} foregroundColor={"systemBlue"}>
@@ -356,7 +329,7 @@ function CompactPager(props: {
   onJumpToPage: (page: number) => void;
 }) {
   return (
-    <VStack alignment={"leading"} spacing={8}>
+    <GlassPanel compact tone="soft">
       <HStack spacing={8}>
         <Button
           title="上一页"
@@ -389,7 +362,7 @@ function CompactPager(props: {
       <Text font={"caption2"} foregroundColor={"secondary"}>
         显示 {props.startResult}-{props.endResult} / {props.resultCount}
       </Text>
-    </VStack>
+    </GlassPanel>
   );
 }
 
@@ -414,37 +387,28 @@ function TrackListRow(props: {
     <Button action={() => void props.onPress()}>
       <HStack
         spacing={12}
-        padding={{ horizontal: 10, vertical: 8 }}
-        background={
-          props.isActive
-            ? {
-                style: {
-                  light: "rgba(59, 130, 246, 0.1)",
-                  dark: "rgba(59, 130, 246, 0.16)",
-                },
-                shape: {
-                  type: "rect",
-                  cornerRadius: 12,
-                  style: "continuous",
-                },
-              }
-            : undefined
-        }>
+        padding={{ horizontal: 12, vertical: 10 }}
+        background={azusaGlassBackground(props.isActive ? "accent" : "soft", 18)}>
+        <Text
+          font={"title3"}
+          foregroundColor={props.isActive ? "systemBlue" : "secondary"}>
+          {props.isActive ? "▌" : ""}
+        </Text>
         <Text
           font={"caption"}
           foregroundColor={props.isActive ? "systemBlue" : "secondary"}>
           {props.displayIndex}
         </Text>
-        <VStack alignment={"leading"} spacing={4}>
+        <VStack alignment={"leading"} spacing={5}>
           <Text
             font={props.isActive ? "headline" : "body"}
-            foregroundColor={props.isActive ? "systemBlue" : "primary"}>
+            foregroundColor={"primary"}>
             {displayTrackTitle(props.track, props.sourceTitle)}
           </Text>
           <Text font={"caption"} foregroundColor={"secondary"}>
             {props.track.artist}
             {duration ? ` · ${duration}` : ""}
-            {props.track.cid ? ` · ${props.track.cid}` : ""}
+            {props.track.cid ? ` · CID ${props.track.cid}` : ""}
           </Text>
           {props.isActive ? (
             <Text font={"caption2"} foregroundColor={"systemBlue"}>
@@ -635,42 +599,50 @@ function PlayerStage(props: PlayerStageProps) {
   const liveTime = usePlaybackClock(progress, 500);
   const currentDurationSeconds =
     progress.duration || props.currentTrack?.durationSeconds || 0;
+  const trackTitle = displayTrackTitle(props.currentTrack, props.sourceTitle);
+  const artist = props.currentTrack?.artist || props.ownerName || "Azusa";
+  const playbackIssue =
+    props.playbackState === "error" ? shortPlaybackDetail(props.playbackDetail) : "";
 
   return (
     <VStack alignment={"center"} spacing={18}>
-      {props.showLyrics ? (
-        <InlineLyricsPanel
-          compact
-          track={props.currentTrack}
-          onShowArtwork={props.onToggleLyrics}
-        />
-      ) : (
-        <Button action={props.onToggleLyrics}>
-          <VStack alignment={"center"} spacing={16}>
-            <ArtworkView
-              cover={props.currentTrack?.cover || props.sourceCover}
-              size={276}
-              contentMode="fit"
-              backgroundStyle="soft"
-              cornerRadius={28}
-              fallbackColor={
-                props.playbackState === "playing" ? "systemBlue" : "systemGray3"
-              }
-            />
-            <VStack alignment={"center"} spacing={5}>
-              <Text font={"title2"}>
-                {displayTrackTitle(props.currentTrack, props.sourceTitle)}
-              </Text>
-              <Text font={"subheadline"} foregroundColor={"secondary"}>
-                {props.currentTrack?.artist || props.ownerName || "Azusa"}
-              </Text>
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                点击封面查看歌词
-              </Text>
+      <VStack
+        alignment={"center"}
+        spacing={18}
+        padding={{ horizontal: 14, vertical: 18 }}
+        background={azusaGlassBackground("strong", 30)}>
+        {props.showLyrics ? (
+          <InlineLyricsPanel
+            compact
+            track={props.currentTrack}
+            onShowArtwork={props.onToggleLyrics}
+          />
+        ) : (
+          <Button action={props.onToggleLyrics}>
+            <VStack alignment={"center"} spacing={16}>
+              <ArtworkView
+                cover={props.currentTrack?.cover || props.sourceCover}
+                size={286}
+                contentMode="fill"
+                backgroundStyle="soft"
+                cornerRadius={30}
+                fallbackColor={
+                  props.playbackState === "playing" ? "systemBlue" : "systemPurple"
+                }
+              />
+              <VStack alignment={"center"} spacing={6}>
+                <Text font={"title2"} multilineTextAlignment={"center"}>
+                  {trackTitle}
+                </Text>
+                <Text font={"subheadline"} foregroundColor={"secondary"}>
+                  {artist}
+                </Text>
+                <StatusChip title="点击封面切换歌词" tone="blue" />
+              </VStack>
             </VStack>
-          </VStack>
-        </Button>
-      )}
+          </Button>
+        )}
+      </VStack>
 
       <VStack alignment={"leading"} spacing={8}>
         <PlaybackProgressView progress={progress} />
@@ -681,10 +653,16 @@ function PlayerStage(props: PlayerStageProps) {
           </Text>
           <Spacer />
           <Text font={"caption"} foregroundColor={"secondary"}>
-            {props.playbackLabel}
+            {props.modeLabel}
           </Text>
         </HStack>
       </VStack>
+
+      {playbackIssue ? (
+        <StatusChip title={playbackIssue} tone="red" />
+      ) : props.playbackState === "loading" ? (
+        <StatusChip title="正在准备音频流" tone="orange" />
+      ) : null}
 
       <TransportControls
         playbackState={props.playbackState}
@@ -699,16 +677,24 @@ function PlayerStage(props: PlayerStageProps) {
           onCyclePlaybackMode={props.onCyclePlaybackMode}
         />
         <NavigationLink destination={props.queueDestination}>
-          <PrimaryActionRow
-            title="队列"
-            subtitle={
-              props.queueLength
-                ? `当前 ${Math.max(props.currentIndex + 1, 0)}/${props.queueLength}`
-                : "暂无歌曲"
-            }
-            systemName="music.note.list"
-            trailing="打开"
-          />
+          <HStack
+            spacing={10}
+            padding={{ horizontal: 12, vertical: 8 }}
+            background={azusaGlassBackground("soft", 18)}>
+            <IconLabel
+              systemName="music.note.list"
+              title="队列"
+              subtitle={
+                props.queueLength
+                  ? `当前 ${Math.max(props.currentIndex + 1, 0)}/${props.queueLength}`
+                  : "暂无歌曲"
+              }
+            />
+            <Spacer />
+            <Text font={"caption"} foregroundColor={"systemBlue"}>
+              打开
+            </Text>
+          </HStack>
         </NavigationLink>
       </HStack>
     </VStack>
@@ -1156,12 +1142,13 @@ function QueueManagementPage(props: QueueManagementPageProps) {
   return (
     <ScrollView
       navigationTitle={"播放队列"}
-      navigationBarTitleDisplayMode={"inline"}>
+      navigationBarTitleDisplayMode={"inline"}
+      background={azusaPageBackground()}>
       <LazyVStack
         alignment={"leading"}
         spacing={24}
         padding={{ horizontal: 16, vertical: 16 }}>
-        <VStack alignment={"leading"} spacing={10}>
+        <GlassPanel tone="accent">
           <HStack spacing={12}>
             <VStack alignment={"leading"} spacing={4}>
               <Text font={"title3"}>
@@ -1194,11 +1181,11 @@ function QueueManagementPage(props: QueueManagementPageProps) {
                 />
               }>
               <Text font={"body"} foregroundColor={"systemBlue"}>
-                打开工具
+                工具
               </Text>
             </NavigationLink>
           </HStack>
-        </VStack>
+        </GlassPanel>
 
         <CompactPager
           page={pageState.page}
@@ -2173,7 +2160,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
 
   return (
     <NavigationStack>
-      <VStack spacing={0}>
+      <VStack spacing={0} background={azusaPageBackground()}>
         {activeTab === "search" ? (
           <SourceLibraryPage
             mode="search"
@@ -2209,29 +2196,27 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             title="正在播放"
             subtitle={`${currentSourceKind} · ${currentSourceSummary || queueSummary}`}>
             <VStack alignment={"leading"} spacing={16}>
-              <SectionCard accent>
-                <PlayerStage
-                  player={player}
-                  currentTrack={currentTrack}
-                  sourceCover={sourceCover}
-                  sourceTitle={sourceTitle}
-                  ownerName={ownerName}
-                  playbackState={playbackState}
-                  playbackLabel={playbackLabel}
-                  playbackMode={playbackMode}
-                  modeLabel={modeLabel}
-                  playbackDetail={playbackDetail}
-                  currentIndex={currentIndex}
-                  queueLength={tracks.length}
-                  queueDestination={queueDestination}
-                  showLyrics={showPlayerLyrics}
-                  onToggleLyrics={() => setShowPlayerLyrics((current) => !current)}
-                  onPrimaryAction={() => void handlePrimaryAction()}
-                  onPrevious={() => void skipBy(-1)}
-                  onNext={() => void skipBy(1)}
-                  onCyclePlaybackMode={cyclePlaybackMode}
-                />
-              </SectionCard>
+              <PlayerStage
+                player={player}
+                currentTrack={currentTrack}
+                sourceCover={sourceCover}
+                sourceTitle={sourceTitle}
+                ownerName={ownerName}
+                playbackState={playbackState}
+                playbackLabel={playbackLabel}
+                playbackMode={playbackMode}
+                modeLabel={modeLabel}
+                playbackDetail={playbackDetail}
+                currentIndex={currentIndex}
+                queueLength={tracks.length}
+                queueDestination={queueDestination}
+                showLyrics={showPlayerLyrics}
+                onToggleLyrics={() => setShowPlayerLyrics((current) => !current)}
+                onPrimaryAction={() => void handlePrimaryAction()}
+                onPrevious={() => void skipBy(-1)}
+                onNext={() => void skipBy(1)}
+                onCyclePlaybackMode={cyclePlaybackMode}
+              />
 
               <SectionCard>
                 <HStack spacing={12}>
@@ -2272,9 +2257,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                       </Text>
                     ) : null}
                     {error ? (
-                      <Text font={"caption"} foregroundColor={"systemRed"}>
-                        {error}
-                      </Text>
+                      <StatusChip title={shortPlaybackDetail(error)} tone="red" />
                     ) : null}
                   </VStack>
                 ) : null}
