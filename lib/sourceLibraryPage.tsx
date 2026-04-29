@@ -1,5 +1,4 @@
 import {
-  Button,
   Dialog,
   HStack,
   Image,
@@ -19,6 +18,7 @@ import {
   AzusaHeader,
   GlassPanel,
   IconLabel,
+  IconOnlyButton,
   IconPillButton,
   StatusChip,
   azusaGlassBackground,
@@ -29,7 +29,7 @@ import {
   sourceSecondaryLabel,
   sourceShortLabel,
 } from "./sources";
-import type { PlaylistRecord, SourceDescriptor } from "./types";
+import type { PlaylistRecord, SourceDescriptor, Track } from "./types";
 
 type SourceLibraryPageProps = {
   mode?: "search" | "library" | "all";
@@ -76,6 +76,12 @@ function shortMessage(message?: string | null) {
 
   const firstLine = message.split("\n")[0]?.trim() ?? message.trim();
   return firstLine.length > 48 ? `${firstLine.slice(0, 48)}...` : firstLine;
+}
+
+function trackDisplayTitle(track: Track, playlistTitle: string) {
+  return track.title.startsWith(`${playlistTitle} · `)
+    ? track.title.slice(playlistTitle.length + 3)
+    : track.title;
 }
 
 function PlaylistArtwork(props: { playlist: PlaylistRecord; active?: boolean }) {
@@ -160,17 +166,16 @@ function PlaylistActionButtons(props: {
   return (
     <HStack spacing={8}>
       {props.playlist.kind !== "user" ? (
-        <IconPillButton
-          title={props.loading ? "处理中..." : "刷新"}
+        <IconOnlyButton
           systemName="arrow.clockwise"
           action={() => void props.onRefreshPlaylist(props.playlist.id)}
         />
       ) : null}
-      <IconPillButton title="另存为" systemName="plus.square.on.square" action={() => void promptDuplicate()} />
-      <IconPillButton title="整单加入" systemName="text.badge.plus" action={() => void promptAddToPlaylist()} />
-      <IconPillButton title="重命名" systemName="pencil" action={() => void promptRename()} />
+      <IconOnlyButton systemName="plus.square.on.square" action={() => void promptDuplicate()} />
+      <IconOnlyButton systemName="text.badge.plus" action={() => void promptAddToPlaylist()} />
+      <IconOnlyButton systemName="pencil" action={() => void promptRename()} />
       {props.playlist.kind === "user" ? (
-        <IconPillButton title="删除" systemName="trash" action={() => void promptDelete()} />
+        <IconOnlyButton systemName="trash" action={() => void promptDelete()} />
       ) : null}
     </HStack>
   );
@@ -197,32 +202,25 @@ function PlaylistRow(props: {
       padding={{ horizontal: 12, vertical: 12 }}
       background={azusaGlassBackground(props.active ? "accent" : "soft", 20)}>
       <HStack spacing={12}>
-        <Button action={() => void props.onOpenPlaylist(props.playlist.id)}>
-          <HStack spacing={12}>
-            <PlaylistArtwork playlist={props.playlist} active={props.active} />
-            <VStack alignment={"leading"} spacing={4}>
-              <Text
-                font={props.active ? "headline" : "body"}
-                foregroundColor={"primary"}>
-                {props.playlist.title}
-              </Text>
-              <Text font={"caption"} foregroundColor={"secondary"}>
-                {playlistSummary(props.playlist)}
-              </Text>
-              {props.active ? (
-                <Text font={"caption2"} foregroundColor={"systemBlue"}>
-                  正在使用
-                </Text>
-              ) : null}
-            </VStack>
-          </HStack>
-        </Button>
+        <PlaylistArtwork playlist={props.playlist} active={props.active} />
+        <VStack alignment={"leading"} spacing={4}>
+          <Text
+            font={props.active ? "headline" : "body"}
+            foregroundColor={"primary"}>
+            {props.playlist.title}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            {playlistSummary(props.playlist)}
+          </Text>
+          {props.active ? (
+            <Text font={"caption2"} foregroundColor={"systemBlue"}>
+              正在使用
+            </Text>
+          ) : null}
+        </VStack>
         <Spacer />
-        <IconPillButton
-          title={showActions ? "收起" : "更多"}
-          systemName="ellipsis"
-          action={() => setShowActions((current) => !current)}
-        />
+        <IconOnlyButton systemName="play.fill" action={() => void props.onOpenPlaylist(props.playlist.id)} />
+        <IconOnlyButton systemName="ellipsis" action={() => setShowActions((current) => !current)} />
       </HStack>
       {showActions ? (
         <PlaylistActionButtons
@@ -283,28 +281,130 @@ function PlaylistGroup(props: {
   );
 }
 
+function SearchResultTrackRow(props: {
+  key?: any;
+  track: Track;
+  index: number;
+  playlistTitle: string;
+}) {
+  return (
+    <HStack
+      spacing={10}
+      padding={{ horizontal: 10, vertical: 8 }}
+      background={azusaGlassBackground("soft", 16)}>
+      <Text font={"caption"} foregroundColor={"secondary"}>
+        {props.index + 1}
+      </Text>
+      <VStack alignment={"leading"} spacing={3}>
+        <Text font={"subheadline"} foregroundColor={"primary"}>
+          {trackDisplayTitle(props.track, props.playlistTitle)}
+        </Text>
+        <Text font={"caption2"} foregroundColor={"secondary"}>
+          {props.track.artist}
+        </Text>
+      </VStack>
+    </HStack>
+  );
+}
+
+function SearchResultPanel(props: {
+  playlist: PlaylistRecord;
+  active: boolean;
+  loading: boolean;
+  onOpenPlaylist: (playlistId: string) => Promise<void>;
+  onRenamePlaylist: (playlistId: string, title: string) => Promise<void>;
+  onDeletePlaylist: (playlistId: string) => Promise<void>;
+  onRefreshPlaylist: (playlistId: string) => Promise<void>;
+  onDuplicatePlaylistToNew: (playlistId: string, title: string) => Promise<void>;
+  onAddPlaylistToTitle: (playlistId: string, targetTitle: string) => Promise<void>;
+}) {
+  const [showActions, setShowActions] = useState(false);
+  const visibleTracks = props.playlist.tracks.slice(0, 20);
+
+  return (
+    <GlassPanel tone="base">
+      <HStack spacing={12}>
+        <PlaylistArtwork playlist={props.playlist} active={props.active} />
+        <VStack alignment={"leading"} spacing={4}>
+          <Text font={"headline"} foregroundColor={"primary"}>
+            {props.playlist.title}
+          </Text>
+          <Text font={"caption"} foregroundColor={"secondary"}>
+            {props.playlist.tracks.length} 首 · {props.playlist.source ? sourceSecondaryLabel(props.playlist.source) : "搜索结果"}
+          </Text>
+          {props.active ? (
+            <Text font={"caption2"} foregroundColor={"systemBlue"}>
+              正在使用
+            </Text>
+          ) : null}
+        </VStack>
+        <Spacer />
+        <IconOnlyButton
+          systemName="play.fill"
+          prominent
+          action={() => void props.onOpenPlaylist(props.playlist.id)}
+        />
+        <IconOnlyButton
+          systemName="ellipsis"
+          action={() => setShowActions((current) => !current)}
+        />
+      </HStack>
+
+      {showActions ? (
+        <PlaylistActionButtons
+          playlist={props.playlist}
+          loading={props.loading}
+          onRenamePlaylist={props.onRenamePlaylist}
+          onDeletePlaylist={props.onDeletePlaylist}
+          onRefreshPlaylist={props.onRefreshPlaylist}
+          onDuplicatePlaylistToNew={props.onDuplicatePlaylistToNew}
+          onAddPlaylistToTitle={props.onAddPlaylistToTitle}
+        />
+      ) : null}
+
+      {visibleTracks.length ? (
+        <VStack alignment={"leading"} spacing={8}>
+          {visibleTracks.map((track, index) => (
+            <SearchResultTrackRow
+              key={track.id}
+              track={track}
+              index={index}
+              playlistTitle={props.playlist.title}
+            />
+          ))}
+          {props.playlist.tracks.length > visibleTracks.length ? (
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              还有 {props.playlist.tracks.length - visibleTracks.length} 首，打开后查看完整队列
+            </Text>
+          ) : null}
+        </VStack>
+      ) : null}
+    </GlassPanel>
+  );
+}
+
 function RecentSourceRow(props: {
   key?: any;
   source: SourceDescriptor;
   onLoadSource: (source: SourceDescriptor) => Promise<void>;
 }) {
   return (
-    <Button action={() => void props.onLoadSource(props.source)} key={props.source.input}>
-      <HStack
-        spacing={12}
-        padding={{ horizontal: 12, vertical: 10 }}
-        background={azusaGlassBackground("soft", 18)}>
-        <IconLabel
-          systemName="clock.arrow.circlepath"
-          title={sourceShortLabel(props.source)}
-          subtitle={`${sourceKindLabel(props.source.kind)} · ${sourceSecondaryLabel(props.source)}`}
-        />
-        <Spacer />
-        <Text font={"caption"} foregroundColor={"systemBlue"}>
-          导入
-        </Text>
-      </HStack>
-    </Button>
+    <HStack
+      key={props.source.input}
+      spacing={12}
+      padding={{ horizontal: 12, vertical: 10 }}
+      background={azusaGlassBackground("soft", 18)}>
+      <IconLabel
+        systemName="clock.arrow.circlepath"
+        title={sourceShortLabel(props.source)}
+        subtitle={`${sourceKindLabel(props.source.kind)} · ${sourceSecondaryLabel(props.source)}`}
+      />
+      <Spacer />
+      <IconOnlyButton
+        systemName="square.and.arrow.down"
+        action={() => void props.onLoadSource(props.source)}
+      />
+    </HStack>
   );
 }
 
@@ -421,7 +521,7 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
                 <Text font={"headline"}>
                   当前搜索歌单
                 </Text>
-                <PlaylistRow
+                <SearchResultPanel
                   playlist={searchPlaylist}
                   active={props.activePlaylistId === searchPlaylist.id}
                   loading={props.loading}
@@ -466,21 +566,6 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
                 />
               }
             />
-
-            {searchPlaylist ? (
-              <PlaylistGroup
-                title="搜索歌单"
-                playlists={[searchPlaylist]}
-                activePlaylistId={props.activePlaylistId}
-                loading={props.loading}
-                onOpenPlaylist={props.onOpenPlaylist}
-                onRenamePlaylist={props.onRenamePlaylist}
-                onDeletePlaylist={props.onDeletePlaylist}
-                onRefreshPlaylist={props.onRefreshPlaylist}
-                onDuplicatePlaylistToNew={props.onDuplicatePlaylistToNew}
-                onAddPlaylistToTitle={props.onAddPlaylistToTitle}
-              />
-            ) : null}
 
             <PlaylistGroup
               title="来源歌单"

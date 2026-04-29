@@ -14,20 +14,20 @@ type GlassTone = "base" | "accent" | "strong" | "soft" | "danger";
 export function azusaGlassBackground(tone: GlassTone = "base", cornerRadius = 24) {
   const styles = {
     base: {
-      light: "rgba(255, 255, 255, 0.78)",
-      dark: "rgba(33, 28, 48, 0.86)",
+      light: "rgba(255, 255, 255, 0.84)",
+      dark: "rgba(42, 36, 58, 0.9)",
     },
     accent: {
-      light: "rgba(245, 239, 255, 0.92)",
-      dark: "rgba(82, 62, 125, 0.34)",
+      light: "rgba(244, 236, 255, 0.95)",
+      dark: "rgba(91, 70, 132, 0.5)",
     },
     strong: {
       light: "rgba(255, 255, 255, 0.94)",
-      dark: "rgba(25, 22, 35, 0.96)",
+      dark: "rgba(22, 19, 32, 0.98)",
     },
     soft: {
-      light: "rgba(249, 246, 255, 0.68)",
-      dark: "rgba(255, 255, 255, 0.07)",
+      light: "rgba(250, 247, 255, 0.76)",
+      dark: "rgba(255, 255, 255, 0.105)",
     },
     danger: {
       light: "rgba(255, 241, 242, 0.88)",
@@ -178,6 +178,27 @@ export function IconPillButton(props: {
           />
         ) : null}
         <Text font={"subheadline"}>{props.title}</Text>
+      </HStack>
+    </Button>
+  );
+}
+
+export function IconOnlyButton(props: {
+  systemName: string;
+  prominent?: boolean;
+  action: () => void | Promise<void>;
+}) {
+  return (
+    <Button
+      buttonStyle={props.prominent ? "borderedProminent" : "bordered"}
+      action={() => void props.action()}>
+      <HStack padding={{ horizontal: 9, vertical: 8 }}>
+        <Image
+          systemName={props.systemName}
+          resizable
+          aspectRatio={{ contentMode: "fit" }}
+          frame={{ width: 17, height: 17 }}
+        />
       </HStack>
     </Button>
   );
