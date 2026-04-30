@@ -4,6 +4,7 @@ import {
   HStack,
   Image,
   LazyVStack,
+  NavigationLink,
   ScrollView,
   Spacer,
   Text,
@@ -40,6 +41,7 @@ type SourceLibraryPageProps = {
   loading: boolean;
   errorMessage?: string | null;
   defaultQuery?: string;
+  playlistDetailDestination?: (playlist: PlaylistRecord) => any;
   onSearchInput: (input: string) => Promise<void>;
   onOpenPlaylist: (playlistId: string) => Promise<void>;
   onCreatePlaylist: (title: string) => Promise<void>;
@@ -192,6 +194,7 @@ function PlaylistRow(props: {
   playlist: PlaylistRecord;
   active: boolean;
   loading: boolean;
+  playlistDetailDestination?: (playlist: PlaylistRecord) => any;
   onOpenPlaylist: (playlistId: string) => Promise<void>;
   onRenamePlaylist: (playlistId: string, title: string) => Promise<void>;
   onDeletePlaylist: (playlistId: string) => Promise<void>;
@@ -200,6 +203,7 @@ function PlaylistRow(props: {
   onAddPlaylistToTitle: (playlistId: string, targetTitle: string) => Promise<void>;
 }) {
   const [showActions, setShowActions] = useState(false);
+  const detailDestination = props.playlistDetailDestination?.(props.playlist);
 
   return (
     <VStack
@@ -208,7 +212,13 @@ function PlaylistRow(props: {
       padding={{ horizontal: 6, vertical: 8 }}
       background={azusaGlassBackground(props.active ? "accent" : "soft", 14)}>
       <HStack spacing={12}>
-        <PlaylistArtwork playlist={props.playlist} active={props.active} />
+        {detailDestination ? (
+          <NavigationLink destination={detailDestination}>
+            <PlaylistArtwork playlist={props.playlist} active={props.active} />
+          </NavigationLink>
+        ) : (
+          <PlaylistArtwork playlist={props.playlist} active={props.active} />
+        )}
         <VStack alignment={"leading"} spacing={4}>
           <Text
             font={"body"}
@@ -225,11 +235,23 @@ function PlaylistRow(props: {
           ) : null}
         </VStack>
         <Spacer />
-        <IconOnlyButton
-          systemName={props.active ? "speaker.wave.2.fill" : "play.fill"}
-          prominent={props.active}
-          action={() => void props.onOpenPlaylist(props.playlist.id)}
-        />
+        {detailDestination ? (
+          <NavigationLink destination={detailDestination}>
+            <Image
+              systemName={props.active ? "speaker.wave.2.fill" : "chevron.right"}
+              resizable
+              aspectRatio={{ contentMode: "fit" }}
+              frame={{ width: 18, height: 18 }}
+              foregroundColor={props.active ? "systemBlue" : "secondary"}
+            />
+          </NavigationLink>
+        ) : (
+          <IconOnlyButton
+            systemName={props.active ? "speaker.wave.2.fill" : "play.fill"}
+            prominent={props.active}
+            action={() => void props.onOpenPlaylist(props.playlist.id)}
+          />
+        )}
         <IconOnlyButton systemName="ellipsis" action={() => setShowActions((current) => !current)} />
       </HStack>
       {showActions ? (
@@ -256,6 +278,7 @@ function PlaylistGroup(props: {
   playlists: PlaylistRecord[];
   activePlaylistId?: string;
   loading: boolean;
+  playlistDetailDestination?: (playlist: PlaylistRecord) => any;
   onOpenPlaylist: (playlistId: string) => Promise<void>;
   onRenamePlaylist: (playlistId: string, title: string) => Promise<void>;
   onDeletePlaylist: (playlistId: string) => Promise<void>;
@@ -286,6 +309,7 @@ function PlaylistGroup(props: {
             playlist={playlist}
             active={props.activePlaylistId === playlist.id}
             loading={props.loading}
+            playlistDetailDestination={props.playlistDetailDestination}
             onOpenPlaylist={props.onOpenPlaylist}
             onRenamePlaylist={props.onRenamePlaylist}
             onDeletePlaylist={props.onDeletePlaylist}
@@ -341,6 +365,7 @@ function SearchResultPanel(props: {
   playlist: PlaylistRecord;
   active: boolean;
   loading: boolean;
+  playlistDetailDestination?: (playlist: PlaylistRecord) => any;
   onOpenPlaylist: (playlistId: string) => Promise<void>;
   onRenamePlaylist: (playlistId: string, title: string) => Promise<void>;
   onDeletePlaylist: (playlistId: string) => Promise<void>;
@@ -352,6 +377,8 @@ function SearchResultPanel(props: {
   onCreatePlaylistWithTracks: (title: string, tracks: Track[]) => Promise<void>;
 }) {
   const [showActions, setShowActions] = useState(false);
+  const [showSelectionTools, setShowSelectionTools] = useState(false);
+  const detailDestination = props.playlistDetailDestination?.(props.playlist);
   const [selectedTrackIds, setSelectedTrackIds] = useState([] as string[]);
   const [page, setPage] = useState(1);
   const totalPages = Math.max(
@@ -371,6 +398,7 @@ function SearchResultPanel(props: {
   useEffect(() => {
     setSelectedTrackIds([]);
     setPage(1);
+    setShowSelectionTools(false);
   }, [props.playlist.id, props.playlist.tracks.length]);
 
   function toggleTrack(trackId: string) {
@@ -456,6 +484,21 @@ function SearchResultPanel(props: {
           action={() => void props.onPlayTracks(props.playlist.tracks)}
         />
         <IconOnlyButton
+          systemName={showSelectionTools ? "checkmark.circle.fill" : "checkmark.circle"}
+          action={() => setShowSelectionTools((current) => !current)}
+        />
+        {detailDestination ? (
+          <NavigationLink destination={detailDestination}>
+            <Image
+              systemName="list.bullet"
+              resizable
+              aspectRatio={{ contentMode: "fit" }}
+              frame={{ width: 18, height: 18 }}
+              foregroundColor={"secondary"}
+            />
+          </NavigationLink>
+        ) : null}
+        <IconOnlyButton
           systemName="ellipsis"
           action={() => setShowActions((current) => !current)}
         />
@@ -475,7 +518,7 @@ function SearchResultPanel(props: {
         </GlassPanel>
       ) : null}
 
-      {visibleTracks.length ? (
+      {showSelectionTools && visibleTracks.length ? (
         <VStack alignment={"leading"} spacing={8}>
           <VStack
             alignment={"leading"}
@@ -712,6 +755,7 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
                   playlist={searchPlaylist}
                   active={props.activePlaylistId === searchPlaylist.id}
                   loading={props.loading}
+                  playlistDetailDestination={props.playlistDetailDestination}
                   onOpenPlaylist={props.onOpenPlaylist}
                   onRenamePlaylist={props.onRenamePlaylist}
                   onDeletePlaylist={props.onDeletePlaylist}
@@ -781,6 +825,7 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
               playlists={sourcePlaylists}
               activePlaylistId={props.activePlaylistId}
               loading={props.loading}
+              playlistDetailDestination={props.playlistDetailDestination}
               onOpenPlaylist={props.onOpenPlaylist}
               onRenamePlaylist={props.onRenamePlaylist}
               onDeletePlaylist={props.onDeletePlaylist}
@@ -795,6 +840,7 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
               playlists={userPlaylists}
               activePlaylistId={props.activePlaylistId}
               loading={props.loading}
+              playlistDetailDestination={props.playlistDetailDestination}
               onOpenPlaylist={props.onOpenPlaylist}
               onRenamePlaylist={props.onRenamePlaylist}
               onDeletePlaylist={props.onDeletePlaylist}

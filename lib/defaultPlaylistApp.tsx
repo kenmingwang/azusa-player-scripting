@@ -718,21 +718,21 @@ function MiniNowPlayingDock(props: {
 
   return (
     <HStack
-      spacing={10}
-      padding={{ horizontal: 14, vertical: 10 }}
-      background={azusaGlassBackground("strong", 24)}>
+      spacing={9}
+      padding={{ horizontal: 12, vertical: 7 }}
+      background={azusaGlassBackground("strong", 20)}>
       <Button action={props.onOpenPlayer}>
-        <HStack spacing={10}>
+        <HStack spacing={9}>
           <ArtworkView
             cover={props.currentTrack.cover || props.sourceCover}
-            width={44}
-            height={44}
+            width={38}
+            height={38}
             contentMode="fill"
             backgroundStyle="none"
-            cornerRadius={22}
+            cornerRadius={19}
             fallbackColor="systemPurple"
           />
-          <VStack alignment={"leading"} spacing={3}>
+          <VStack alignment={"leading"} spacing={2}>
             <Text font={"subheadline"}>
               {displayTrackTitle(props.currentTrack, props.sourceTitle)}
             </Text>
@@ -778,7 +778,7 @@ function IconOnlyControl(props: {
   );
 }
 
-type QueueManagementPageProps = {
+type PlaylistDetailPageProps = {
   playlist: PlaylistRecord | null;
   tracks: Track[];
   sourceTitle: string;
@@ -794,7 +794,7 @@ type QueueManagementPageProps = {
   onHandleAddTrack: (track: Track) => Promise<void>;
 };
 
-type QueueToolsPageProps = QueueManagementPageProps;
+type QueueToolsPageProps = PlaylistDetailPageProps;
 
 function QueueSearchPage(props: QueueToolsPageProps) {
   const [queueQuery, setQueueQuery] = useState("");
@@ -1177,7 +1177,7 @@ function QueueToolsPage(props: QueueToolsPageProps) {
   );
 }
 
-function QueueManagementPage(props: QueueManagementPageProps) {
+function PlaylistDetailPage(props: PlaylistDetailPageProps) {
   const tracks = props.tracks;
   const [page, setPage] = useState(pageForTrackIndex(props.currentIndex));
   const [pageInput, setPageInput] = useState(String(page));
@@ -1345,7 +1345,7 @@ function QueueManagementPage(props: QueueManagementPageProps) {
   );
 }
 
-function QueueTabPanel(props: QueueManagementPageProps) {
+function QueueTabPanel(props: PlaylistDetailPageProps) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(pageForTrackIndex(props.currentIndex));
   const [pageInput, setPageInput] = useState(String(page));
@@ -1879,6 +1879,82 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }
   }
 
+  async function playPlaylistTrack(playlistId: string, index: number) {
+    const nextState = setActivePlaylist(playlistId);
+    syncFromState(nextState);
+    const playlist = getPlaylistById(playlistId, nextState);
+    const nextTracks = playlist?.tracks ?? [];
+
+    if (!playlist || index < 0 || index >= nextTracks.length) {
+      return;
+    }
+
+    setPlayLoading(true);
+    setError(null);
+
+    try {
+      playlistBridge.transientQueue = false;
+      setQueueTracks(nextTracks);
+      player.setQueue(nextTracks);
+      await player.playIndex(index);
+      setActiveTab("player");
+    } catch (playError) {
+      setError(
+        `寮€濮嬫挱鏀惧け璐? ${
+          playError instanceof Error ? playError.message : String(playError)
+        }`,
+      );
+    } finally {
+      setPlayLoading(false);
+    }
+  }
+
+  async function handleRenameTrackForPlaylist(
+    playlist: PlaylistRecord | null,
+    track: Track,
+  ) {
+    if (!playlist) {
+      return;
+    }
+
+    const title = await Dialog.prompt({
+      title: "Rename track",
+      message: "Enter the display title for this track.",
+      defaultValue: displayTrackTitle(track, playlist.title),
+      placeholder: "Track title",
+      confirmLabel: "Save",
+      cancelLabel: "Cancel",
+      selectAll: true,
+    });
+
+    if (title == null) {
+      return;
+    }
+
+    const nextState = renameTrackInPlaylist(playlist.id, track.id, title);
+    syncFromState(nextState);
+
+    if (playlistBridge.activePlaylistId === playlist.id) {
+      applyPlaylistToPlayer(getActivePlaylist(nextState), currentTrack?.id);
+    }
+  }
+
+  async function handleDeleteTracksFromPlaylist(
+    playlistId: string | null | undefined,
+    trackIds: string[],
+  ) {
+    if (!playlistId || !trackIds.length) {
+      return;
+    }
+
+    const nextState = deleteTracksFromPlaylist(playlistId, trackIds);
+    syncFromState(nextState);
+
+    if (playlistBridge.activePlaylistId === playlistId) {
+      applyPlaylistToPlayer(getActivePlaylist(nextState), currentTrack?.id);
+    }
+  }
+
   async function handleRenameTrack(track: Track) {
     if (!activePlaylistId) {
       return;
@@ -2317,8 +2393,33 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   );
   const currentTrackDuration = formatDuration(currentTrack?.durationSeconds);
   const currentTrackLabel = displayTrackTitle(currentTrack, sourceTitle);
+  const playlistDetailDestination = (playlist: PlaylistRecord) => {
+    const isActivePlaylist = activePlaylistId === playlist.id;
+
+    return (
+      <PlaylistDetailPage
+        playlist={playlist}
+        tracks={playlist.tracks}
+        sourceTitle={playlist.title}
+        currentIndex={isActivePlaylist ? currentIndex : -1}
+        playbackState={isActivePlaylist ? playbackState : "idle"}
+        playLoading={isActivePlaylist ? playLoading : false}
+        onPlayTrackAt={(index) => void playPlaylistTrack(playlist.id, index)}
+        onHandleDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
+        onHandleAddPlaylistToTitle={handleAddPlaylistToTitle}
+        onAddTracksByTitle={addTracksByTitle}
+        onHandleDeleteTracks={(trackIds) =>
+          handleDeleteTracksFromPlaylist(playlist.id, trackIds)
+        }
+        onHandleRenameTrack={(track) =>
+          handleRenameTrackForPlaylist(playlist, track)
+        }
+        onHandleAddTrack={handleAddTrack}
+      />
+    );
+  };
   const queueDestination = (
-    <QueueManagementPage
+    <PlaylistDetailPage
       playlist={activePlaylist}
       tracks={tracks}
       sourceTitle={sourceTitle}
@@ -2329,8 +2430,12 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
       onHandleDuplicatePlaylistToNew={handleDuplicatePlaylistToNew}
       onHandleAddPlaylistToTitle={handleAddPlaylistToTitle}
       onAddTracksByTitle={addTracksByTitle}
-      onHandleDeleteTracks={handleDeleteTracks}
-      onHandleRenameTrack={handleRenameTrack}
+      onHandleDeleteTracks={(trackIds) =>
+        handleDeleteTracksFromPlaylist(activePlaylistId, trackIds)
+      }
+      onHandleRenameTrack={(track) =>
+        handleRenameTrackForPlaylist(activePlaylist, track)
+      }
       onHandleAddTrack={handleAddTrack}
     />
   );
@@ -2347,6 +2452,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             loading={loading}
             errorMessage={error}
             defaultQuery={playbackSource.input}
+            playlistDetailDestination={playlistDetailDestination}
             onSearchInput={async (input) => {
               await loadSourceFromInput(input);
             }}
@@ -2433,6 +2539,7 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             loading={loading}
             errorMessage={error}
             defaultQuery={playbackSource.input}
+            playlistDetailDestination={playlistDetailDestination}
             onSearchInput={async (input) => {
               await loadSourceFromInput(input);
             }}
