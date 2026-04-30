@@ -437,7 +437,7 @@ function SearchResultPanel(props: {
         background={azusaGlassBackground("soft", 22)}>
         <PlaylistArtwork playlist={props.playlist} active={props.active} />
         <VStack alignment={"leading"} spacing={4}>
-          <Text font={"headline"} foregroundColor={"primary"}>
+          <Text font={"body"} foregroundColor={"primary"}>
             {props.playlist.title}
           </Text>
           <Text font={"caption"} foregroundColor={"secondary"}>
@@ -476,13 +476,40 @@ function SearchResultPanel(props: {
       ) : null}
 
       {visibleTracks.length ? (
-        <VStack alignment={"leading"} spacing={10}>
-          <GlassPanel compact tone="accent">
+        <VStack alignment={"leading"} spacing={8}>
+          <VStack
+            alignment={"leading"}
+            spacing={8}
+            padding={{ horizontal: 10, vertical: 10 }}
+            background={azusaGlassBackground("soft", 18)}>
             <HStack spacing={8}>
               <VStack alignment={"leading"} spacing={3}>
-                <Text font={"subheadline"}>挑几首，或者直接播放全部</Text>
                 <Text font={"caption"} foregroundColor={"secondary"}>
-                  已选 {selectedTracks.length} 首 · 第 {safePage}/{totalPages} 页
+                  已选 {selectedTracks.length} 首
+                  {totalPages > 1 ? ` · 第 ${safePage}/${totalPages} 页` : ""}
+                </Text>
+              </VStack>
+              <Spacer />
+              <IconOnlyButton
+                systemName="checkmark.circle"
+                action={selectVisibleTracks}
+              />
+              <IconOnlyButton
+                systemName="checkmark.circle.fill"
+                action={selectAllTracks}
+              />
+              <IconOnlyButton
+                systemName="xmark.circle"
+                action={() => setSelectedTrackIds([])}
+              />
+            </HStack>
+            <HStack spacing={8}>
+              <VStack alignment={"leading"} spacing={2}>
+                <Text font={"subheadline"}>
+                  {selectedTracks.length ? "播放或收藏选中歌曲" : "播放全部，或点歌曲左侧选择"}
+                </Text>
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  {props.playlist.tracks.length} 首 · {props.playlist.source ? sourceSecondaryLabel(props.playlist.source) : "搜索结果"}
                 </Text>
               </VStack>
               <Spacer />
@@ -496,7 +523,7 @@ function SearchResultPanel(props: {
                 }
               />
               <IconOnlyButton
-                systemName="plus"
+                systemName="text.badge.plus"
                 action={() => void promptAddSelectedToPlaylist()}
               />
               <IconOnlyButton
@@ -504,33 +531,23 @@ function SearchResultPanel(props: {
                 action={() => void promptCreatePlaylistFromSelection()}
               />
             </HStack>
-            <HStack spacing={8}>
-              <IconPillButton
-                title="选本页"
-                systemName="checkmark.circle"
-                action={selectVisibleTracks}
-              />
-              <IconPillButton
-                title="全选"
-                systemName="checkmark.circle.fill"
-                action={selectAllTracks}
-              />
-              <IconPillButton
-                title="清空"
-                systemName="xmark.circle"
-                action={() => setSelectedTrackIds([])}
-              />
-              <Spacer />
-              <IconOnlyButton
-                systemName="chevron.left"
-                action={() => setPage((current) => Math.max(1, current - 1))}
-              />
-              <IconOnlyButton
-                systemName="chevron.right"
-                action={() => setPage((current) => Math.min(totalPages, current + 1))}
-              />
-            </HStack>
-          </GlassPanel>
+            {totalPages > 1 ? (
+              <HStack spacing={8}>
+                <Spacer />
+                <IconOnlyButton
+                  systemName="chevron.left"
+                  action={() => setPage((current) => Math.max(1, current - 1))}
+                />
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  {safePage}/{totalPages}
+                </Text>
+                <IconOnlyButton
+                  systemName="chevron.right"
+                  action={() => setPage((current) => Math.min(totalPages, current + 1))}
+                />
+              </HStack>
+            ) : null}
+          </VStack>
           {visibleTracks.map((track, index) => (
             <SearchResultTrackRow
               key={track.id}
@@ -687,9 +704,9 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
             ) : null}
 
             {searchPlaylist ? (
-              <VStack alignment={"leading"} spacing={12}>
-                <Text font={"headline"}>
-                  当前搜索歌单
+              <VStack alignment={"leading"} spacing={10}>
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  导入结果
                 </Text>
                 <SearchResultPanel
                   playlist={searchPlaylist}
