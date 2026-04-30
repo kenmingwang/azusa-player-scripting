@@ -459,10 +459,12 @@ function SearchResultPanel(props: {
 
   return (
     <VStack alignment={"leading"} spacing={14}>
-      <HStack
+      <VStack
+        alignment={"leading"}
         spacing={12}
         padding={{ horizontal: 12, vertical: 12 }}
         background={azusaGlassBackground("soft", 22)}>
+        <HStack spacing={12}>
         <PlaylistArtwork playlist={props.playlist} active={props.active} />
         <VStack alignment={"leading"} spacing={4}>
           <Text font={"body"} foregroundColor={"primary"}>
@@ -478,31 +480,38 @@ function SearchResultPanel(props: {
           ) : null}
         </VStack>
         <Spacer />
-        <IconOnlyButton
-          systemName="play.fill"
-          prominent
-          action={() => void props.onPlayTracks(props.playlist.tracks)}
-        />
-        <IconOnlyButton
-          systemName={showSelectionTools ? "checkmark.circle.fill" : "checkmark.circle"}
-          action={() => setShowSelectionTools((current) => !current)}
-        />
         {detailDestination ? (
           <NavigationLink destination={detailDestination}>
             <Image
-              systemName="list.bullet"
+              systemName="chevron.right"
               resizable
               aspectRatio={{ contentMode: "fit" }}
-              frame={{ width: 18, height: 18 }}
+              frame={{ width: 14, height: 14 }}
               foregroundColor={"secondary"}
             />
           </NavigationLink>
         ) : null}
-        <IconOnlyButton
-          systemName="ellipsis"
-          action={() => setShowActions((current) => !current)}
-        />
-      </HStack>
+        </HStack>
+
+        <HStack spacing={10}>
+          <IconPillButton
+            title="播放全部"
+            systemName="play.fill"
+            prominent
+            action={() => void props.onPlayTracks(props.playlist.tracks)}
+          />
+          <IconPillButton
+            title={showSelectionTools ? "收起选择" : "选择歌曲"}
+            systemName={showSelectionTools ? "checkmark.circle.fill" : "checkmark.circle"}
+            action={() => setShowSelectionTools((current) => !current)}
+          />
+          <Spacer />
+          <IconOnlyButton
+            systemName="ellipsis"
+            action={() => setShowActions((current) => !current)}
+          />
+        </HStack>
+      </VStack>
 
       {showActions ? (
         <GlassPanel compact tone="soft">
