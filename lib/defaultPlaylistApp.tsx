@@ -605,12 +605,11 @@ function PlayerStage(props: PlayerStageProps) {
     props.playbackState === "error" ? shortPlaybackDetail(props.playbackDetail) : "";
 
   return (
-    <VStack alignment={"center"} spacing={18}>
+    <VStack alignment={"center"} spacing={16}>
       <VStack
         alignment={"center"}
-        spacing={18}
-        padding={{ horizontal: 14, vertical: 18 }}
-        background={azusaGlassBackground("strong", 30)}>
+        spacing={14}
+        padding={{ horizontal: 10, vertical: 12 }}>
         {props.showLyrics ? (
           <InlineLyricsPanel
             compact
@@ -622,10 +621,10 @@ function PlayerStage(props: PlayerStageProps) {
             <VStack alignment={"center"} spacing={16}>
               <ArtworkView
                 cover={props.currentTrack?.cover || props.sourceCover}
-                size={286}
+                size={292}
                 contentMode="fill"
                 backgroundStyle="soft"
-                cornerRadius={30}
+                cornerRadius={34}
                 fallbackColor={
                   props.playbackState === "playing" ? "systemBlue" : "systemPurple"
                 }
@@ -637,14 +636,16 @@ function PlayerStage(props: PlayerStageProps) {
                 <Text font={"subheadline"} foregroundColor={"secondary"}>
                   {artist}
                 </Text>
-                <StatusChip title="点击封面切换歌词" tone="blue" />
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  点封面看歌词
+                </Text>
               </VStack>
             </VStack>
           </Button>
         )}
       </VStack>
 
-      <VStack alignment={"leading"} spacing={8}>
+      <VStack alignment={"leading"} spacing={8} padding={{ horizontal: 4, vertical: 0 }}>
         <PlaybackProgressView progress={progress} />
         <HStack spacing={8}>
           <Text font={"caption"} foregroundColor={"secondary"}>
@@ -671,7 +672,7 @@ function PlayerStage(props: PlayerStageProps) {
         onNext={props.onNext}
       />
 
-      <HStack spacing={10}>
+      <HStack spacing={10} padding={{ horizontal: 2, vertical: 0 }}>
         <PlaybackModeControl
           playbackMode={props.playbackMode}
           onCyclePlaybackMode={props.onCyclePlaybackMode}
@@ -698,6 +699,82 @@ function PlayerStage(props: PlayerStageProps) {
         </NavigationLink>
       </HStack>
     </VStack>
+  );
+}
+
+function MiniNowPlayingDock(props: {
+  currentTrack: Track | null;
+  sourceCover?: string;
+  sourceTitle: string;
+  ownerName: string;
+  playbackState: PlaybackUiState;
+  queueDestination: any;
+  onOpenPlayer: () => void;
+  onPrimaryAction: () => void | Promise<void>;
+}) {
+  if (!props.currentTrack) {
+    return null;
+  }
+
+  return (
+    <HStack
+      spacing={10}
+      padding={{ horizontal: 14, vertical: 10 }}
+      background={azusaGlassBackground("strong", 24)}>
+      <Button action={props.onOpenPlayer}>
+        <HStack spacing={10}>
+          <ArtworkView
+            cover={props.currentTrack.cover || props.sourceCover}
+            width={44}
+            height={44}
+            contentMode="fill"
+            backgroundStyle="none"
+            cornerRadius={22}
+            fallbackColor="systemPurple"
+          />
+          <VStack alignment={"leading"} spacing={3}>
+            <Text font={"subheadline"}>
+              {displayTrackTitle(props.currentTrack, props.sourceTitle)}
+            </Text>
+            <Text font={"caption"} foregroundColor={"secondary"}>
+              {props.currentTrack.artist || props.ownerName || "Azusa"}
+            </Text>
+          </VStack>
+        </HStack>
+      </Button>
+      <Spacer />
+      <IconOnlyControl
+        systemName={props.playbackState === "playing" ? "pause.fill" : "play.fill"}
+        action={props.onPrimaryAction}
+      />
+      <NavigationLink destination={props.queueDestination}>
+        <Image
+          systemName="music.note.list"
+          resizable
+          aspectRatio={{ contentMode: "fit" }}
+          frame={{ width: 20, height: 20 }}
+          foregroundColor={"secondary"}
+        />
+      </NavigationLink>
+    </HStack>
+  );
+}
+
+function IconOnlyControl(props: {
+  systemName: string;
+  action: () => void | Promise<void>;
+}) {
+  return (
+    <Button buttonStyle="bordered" action={() => void props.action()}>
+      <HStack padding={{ horizontal: 9, vertical: 8 }}>
+        <Image
+          systemName={props.systemName}
+          resizable
+          aspectRatio={{ contentMode: "fit" }}
+          frame={{ width: 16, height: 16 }}
+        />
+      </HStack>
+    </Button>
   );
 }
 
@@ -1148,19 +1225,50 @@ function QueueManagementPage(props: QueueManagementPageProps) {
         alignment={"leading"}
         spacing={24}
         padding={{ horizontal: 16, vertical: 16 }}>
-        <GlassPanel tone="accent">
-          <HStack spacing={12}>
-            <VStack alignment={"leading"} spacing={4}>
+        <VStack
+          alignment={"leading"}
+          spacing={18}
+          padding={{ horizontal: 14, vertical: 16 }}
+          background={azusaGlassBackground("accent", 26)}>
+          <HStack spacing={14}>
+            <ArtworkView
+              cover={props.playlist?.cover}
+              width={108}
+              height={108}
+              contentMode="fill"
+              backgroundStyle="none"
+              cornerRadius={18}
+              fallbackColor="systemPurple"
+            />
+            <VStack alignment={"leading"} spacing={6}>
               <Text font={"title3"}>
                 {props.playlist?.title || props.sourceTitle}
               </Text>
               <Text font={"caption"} foregroundColor={"secondary"}>
-                共 {tracks.length} 首
-                {props.currentIndex >= 0
-                  ? ` · 当前 ${props.currentIndex + 1}/${tracks.length}`
-                  : ""}
+                {props.playlist?.ownerName || "Azusa"} · {tracks.length} 首
               </Text>
+              {props.currentIndex >= 0 ? (
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  当前播放第 {props.currentIndex + 1} 首
+                </Text>
+              ) : null}
             </VStack>
+          </HStack>
+
+          <HStack spacing={10}>
+            <Button
+              buttonStyle="borderedProminent"
+              action={() => props.onPlayTrackAt(0)}>
+              <HStack spacing={8} padding={{ horizontal: 10, vertical: 6 }}>
+                <Image
+                  systemName="play.fill"
+                  resizable
+                  aspectRatio={{ contentMode: "fit" }}
+                  frame={{ width: 15, height: 15 }}
+                />
+                <Text font={"subheadline"}>播放全部</Text>
+              </HStack>
+            </Button>
             <Spacer />
             <NavigationLink
               destination={
@@ -1180,12 +1288,16 @@ function QueueManagementPage(props: QueueManagementPageProps) {
                   onHandleAddTrack={props.onHandleAddTrack}
                 />
               }>
-              <Text font={"body"} foregroundColor={"systemBlue"}>
-                工具
-              </Text>
+              <Image
+                systemName="ellipsis"
+                resizable
+                aspectRatio={{ contentMode: "fit" }}
+                frame={{ width: 20, height: 20 }}
+                foregroundColor={"secondary"}
+              />
             </NavigationLink>
           </HStack>
-        </GlassPanel>
+        </VStack>
 
         <CompactPager
           page={pageState.page}
@@ -2284,28 +2396,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                 onCyclePlaybackMode={cyclePlaybackMode}
               />
 
-              <SectionCard>
-                <HStack spacing={12}>
-                  <VStack alignment={"leading"} spacing={5}>
-                    <Text font={"headline"}>{sourceTitle}</Text>
-                    <Text font={"caption"} foregroundColor={"secondary"}>
-                      {queueSummary} · 已缓存 {cachedTrackCount} / {tracks.length} 首
-                    </Text>
-                    <Text font={"caption"} foregroundColor={"secondary"}>
-                      {modeLabel} · {modeHint}
-                      {currentTrackDuration ? ` · ${currentTrackDuration}` : ""}
-                    </Text>
-                  </VStack>
-                  <Spacer />
-                  {activePlaylist?.source ? (
-                    <Button
-                      title={loading ? "同步中..." : "刷新"}
-                      buttonStyle="bordered"
-                      action={() => void refreshPlaylistSource(activePlaylist.id)}
-                    />
-                  ) : null}
-                </HStack>
-                {playerMessage || pendingCommand || error || scenePhase !== "active" ? (
+              {playerMessage || pendingCommand || error || scenePhase !== "active" ? (
+                <SectionCard>
                   <VStack alignment={"leading"} spacing={3}>
                     {playerMessage ? (
                       <Text font={"caption"} foregroundColor={"systemOrange"}>
@@ -2326,8 +2418,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
                       <StatusChip title={shortPlaybackDetail(error)} tone="red" />
                     ) : null}
                   </VStack>
-                ) : null}
-              </SectionCard>
+                </SectionCard>
+              ) : null}
             </VStack>
           </AppPage>
         ) : null}
@@ -2360,6 +2452,19 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
             onLoadSource={async (source) => {
               await importSourceToSearch(source);
             }}
+          />
+        ) : null}
+
+        {activeTab !== "player" ? (
+          <MiniNowPlayingDock
+            currentTrack={currentTrack}
+            sourceCover={sourceCover}
+            sourceTitle={sourceTitle}
+            ownerName={ownerName}
+            playbackState={playbackState}
+            queueDestination={queueDestination}
+            onOpenPlayer={() => setActiveTab("player")}
+            onPrimaryAction={() => void handlePrimaryAction()}
           />
         ) : null}
 

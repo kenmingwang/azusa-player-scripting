@@ -204,14 +204,14 @@ function PlaylistRow(props: {
   return (
     <VStack
       alignment={"leading"}
-      spacing={10}
-      padding={{ horizontal: 12, vertical: 12 }}
-      background={azusaGlassBackground(props.active ? "accent" : "soft", 20)}>
+      spacing={8}
+      padding={{ horizontal: 6, vertical: 8 }}
+      background={azusaGlassBackground(props.active ? "accent" : "soft", 14)}>
       <HStack spacing={12}>
         <PlaylistArtwork playlist={props.playlist} active={props.active} />
         <VStack alignment={"leading"} spacing={4}>
           <Text
-            font={props.active ? "headline" : "body"}
+            font={"body"}
             foregroundColor={"primary"}>
             {props.playlist.title}
           </Text>
@@ -225,19 +225,26 @@ function PlaylistRow(props: {
           ) : null}
         </VStack>
         <Spacer />
-        <IconOnlyButton systemName="play.fill" action={() => void props.onOpenPlaylist(props.playlist.id)} />
+        <IconOnlyButton
+          systemName={props.active ? "speaker.wave.2.fill" : "play.fill"}
+          prominent={props.active}
+          action={() => void props.onOpenPlaylist(props.playlist.id)}
+        />
         <IconOnlyButton systemName="ellipsis" action={() => setShowActions((current) => !current)} />
       </HStack>
       {showActions ? (
-        <PlaylistActionButtons
-          playlist={props.playlist}
-          loading={props.loading}
-          onRenamePlaylist={props.onRenamePlaylist}
-          onDeletePlaylist={props.onDeletePlaylist}
-          onRefreshPlaylist={props.onRefreshPlaylist}
-          onDuplicatePlaylistToNew={props.onDuplicatePlaylistToNew}
-          onAddPlaylistToTitle={props.onAddPlaylistToTitle}
-        />
+        <HStack spacing={8}>
+          <Spacer />
+          <PlaylistActionButtons
+            playlist={props.playlist}
+            loading={props.loading}
+            onRenamePlaylist={props.onRenamePlaylist}
+            onDeletePlaylist={props.onDeletePlaylist}
+            onRefreshPlaylist={props.onRefreshPlaylist}
+            onDuplicatePlaylistToNew={props.onDuplicatePlaylistToNew}
+            onAddPlaylistToTitle={props.onAddPlaylistToTitle}
+          />
+        </HStack>
       ) : null}
     </VStack>
   );
@@ -257,10 +264,15 @@ function PlaylistGroup(props: {
   onAddPlaylistToTitle: (playlistId: string, targetTitle: string) => Promise<void>;
 }) {
   return (
-    <VStack alignment={"leading"} spacing={12}>
-      <Text font={"headline"}>
-        {props.title}
-      </Text>
+    <VStack alignment={"leading"} spacing={8}>
+      <HStack spacing={8}>
+        <Text font={"headline"}>
+          {props.title}
+        </Text>
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          {props.playlists.length} 个
+        </Text>
+      </HStack>
       {!props.playlists.length ? (
         <GlassPanel compact tone="soft">
           <Text font={"subheadline"} foregroundColor={"secondary"}>
@@ -714,19 +726,38 @@ export function SourceLibraryPage(props: SourceLibraryPageProps) {
         ) : null}
 
         {showLibrary ? (
-          <VStack alignment={"leading"} spacing={20}>
+          <VStack alignment={"leading"} spacing={18}>
             <AzusaHeader
               eyebrow="Azusa library"
-              title="歌单库"
-              subtitle={`${props.playlists.length} 个歌单`}
+              title="我的歌单"
+              subtitle="打开歌单播放，点更多管理。"
               trailing={
-                <IconPillButton
-                  title="新建"
+                <IconOnlyButton
                   systemName="plus"
+                  prominent
                   action={() => void promptCreatePlaylist()}
                 />
               }
             />
+
+            <HStack
+              spacing={14}
+              padding={{ horizontal: 14, vertical: 12 }}
+              background={azusaGlassBackground("strong", 22)}>
+              <Image
+                systemName="music.note.list"
+                resizable
+                aspectRatio={{ contentMode: "fit" }}
+                frame={{ width: 24, height: 24 }}
+                foregroundColor={"systemBlue"}
+              />
+              <VStack alignment={"leading"} spacing={3}>
+                <Text font={"headline"}>{props.playlists.length} 个歌单</Text>
+                <Text font={"caption"} foregroundColor={"secondary"}>
+                  来源 {sourcePlaylists.length} · 自定义 {userPlaylists.length}
+                </Text>
+              </VStack>
+            </HStack>
 
             <PlaylistGroup
               title="来源歌单"
