@@ -40,7 +40,15 @@ declare module "scripting" {
   export const Storage: any;
   export const BackgroundURLSession: any;
   export const UIImage: any;
-  export const AVPlayer: any;
+  export type AVPlayerSourceOptions = {
+    headers?: Record<string, string>;
+  };
+  export const AVPlayer: {
+    new (): {
+      setSource(source: string, options?: AVPlayerSourceOptions): boolean;
+      [key: string]: any;
+    };
+  };
   export const SharedAudioSession: any;
   export const MediaPlayer: any;
   export const TimeControlStatus: any;

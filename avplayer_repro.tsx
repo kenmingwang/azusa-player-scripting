@@ -425,43 +425,28 @@ function ReproApp() {
       }
     };
 
-    const attempts = [
-      {
-        label: "setSource(url, { headers })",
-        run: () => localPlayer.setSource(source, { headers }),
-      },
-      {
-        label: "setSource({ url, headers })",
-        run: () => localPlayer.setSource({ url: source, headers }),
-      },
-      {
-        label: "setSource(url)",
-        run: () => localPlayer.setSource(source),
-      },
-    ];
+    const label = "setSource(url, { headers })";
 
-    for (const attempt of attempts) {
-      try {
-        const result = attempt.run();
-        append("AVPlayer setSource attempt", {
-          run: activeRun,
-          queueIndex: reproIndex,
-          sourceIndex,
-          label: attempt.label,
-          result,
-        });
-        if (result) {
-          return;
-        }
-      } catch (error) {
-        append("AVPlayer setSource threw", {
-          run: activeRun,
-          queueIndex: reproIndex,
-          sourceIndex,
-          label: attempt.label,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    try {
+      const result = localPlayer.setSource(source, { headers });
+      append("AVPlayer setSource attempt", {
+        run: activeRun,
+        queueIndex: reproIndex,
+        sourceIndex,
+        label,
+        result,
+      });
+      if (result) {
+        return;
       }
+    } catch (error) {
+      append("AVPlayer setSource threw", {
+        run: activeRun,
+        queueIndex: reproIndex,
+        sourceIndex,
+        label,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     await playCandidate(track, sourceIndex + 1, activeRun, autoAdvance);

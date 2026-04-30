@@ -783,53 +783,31 @@ class AzusaScriptingPlayer {
     this.lastSourceDebug = this.describeCurrentSource(source, headers);
     this.recordAttemptedSource(source, headers);
 
-    const attempts = headers
-      ? [
-          {
-            label: "setSource(url, { headers })",
-            run: () => this.player!.setSource(source, { headers }),
-          },
-          {
-            label: "setSource({ url, headers })",
-            run: () => this.player!.setSource({ url: source, headers }),
-          },
-          {
-            label: "setSource(url)",
-            run: () => this.player!.setSource(source),
-          },
-        ]
-      : [
-          {
-            label: "setSource(url)",
-            run: () => this.player!.setSource(source),
-          },
-        ];
+    const label = headers ? "setSource(url, { headers })" : "setSource(url)";
 
-    for (const attempt of attempts) {
-      try {
-        const result = attempt.run();
-        this.logPlaybackEvent("set-source-attempt", {
-          label: attempt.label,
-          result,
-          source,
-          sourceSummary: this.summarizeSource(source),
-          sourceAttemptIndex: this.sourceAttemptIndex,
-          headers,
-        });
-        if (result) {
-          return true;
-        }
-      } catch (error) {
-        this.logPlaybackEvent("set-source-throw", {
-          label: attempt.label,
-          source,
-          sourceSummary: this.summarizeSource(source),
-          error: error instanceof Error ? error.message : String(error),
-        });
-        this.lastSourceDebug = `${this.describeCurrentSource(source, headers)} · setSource ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-      }
+    try {
+      const result = headers
+        ? this.player!.setSource(source, { headers })
+        : this.player!.setSource(source);
+      this.logPlaybackEvent("set-source-attempt", {
+        label,
+        result,
+        source,
+        sourceSummary: this.summarizeSource(source),
+        sourceAttemptIndex: this.sourceAttemptIndex,
+        headers,
+      });
+      return Boolean(result);
+    } catch (error) {
+      this.logPlaybackEvent("set-source-throw", {
+        label,
+        source,
+        sourceSummary: this.summarizeSource(source),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.lastSourceDebug = `${this.describeCurrentSource(source, headers)} · setSource ${
+        error instanceof Error ? error.message : String(error)
+      }`;
     }
 
     return false;
