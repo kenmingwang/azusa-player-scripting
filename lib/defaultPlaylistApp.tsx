@@ -1468,6 +1468,13 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
     }),
     [],
   );
+  const transportBridge = useMemo(
+    () => ({
+      skipRunning: false,
+      pendingSkipDelta: 0,
+    }),
+    [],
+  );
 
   const [playlistLibrary, setPlaylistLibrary] = useState(
     persistedState.playlistLibrary,
@@ -1833,11 +1840,23 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
   }
 
   async function skipBy(delta: number) {
+    if (transportBridge.skipRunning) {
+      transportBridge.pendingSkipDelta += delta;
+      setPlayLoading(true);
+      return;
+    }
+
+    transportBridge.skipRunning = true;
     setPlayLoading(true);
     setError(null);
 
     try {
-      await player.skip(delta);
+      let nextDelta = delta;
+      while (nextDelta !== 0) {
+        transportBridge.pendingSkipDelta = 0;
+        await player.skip(nextDelta);
+        nextDelta = transportBridge.pendingSkipDelta;
+      }
     } catch (skipError) {
       setError(
         `切歌失败: ${
@@ -1845,6 +1864,8 @@ export function DefaultPlaylistApp(props: DefaultPlaylistAppProps) {
         }`,
       );
     } finally {
+      transportBridge.skipRunning = false;
+      transportBridge.pendingSkipDelta = 0;
       setPlayLoading(false);
     }
   }
