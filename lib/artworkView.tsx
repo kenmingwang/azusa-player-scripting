@@ -30,9 +30,11 @@ export function ArtworkView(props: ArtworkViewProps) {
         frame={{ width, height }}
         resizable
         aspectRatio={{ contentMode }}
+        contentMode={contentMode}
         interpolation="high"
         antialiased
         padding={padding}
+        clipped
         clipShape={{
           type: "rect",
           cornerRadius,

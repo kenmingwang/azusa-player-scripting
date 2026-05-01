@@ -366,6 +366,96 @@ function CompactPager(props: {
   );
 }
 
+function InlinePager(props: {
+  page: number;
+  totalPages: number;
+  startResult: number;
+  endResult: number;
+  resultCount: number;
+  pageInput: string;
+  onPageInputChange: (value: string) => void;
+  onJumpToPage: (page: number) => void;
+}) {
+  const hasMultiplePages = props.totalPages > 1;
+
+  return (
+    <VStack alignment={"leading"} spacing={8} padding={{ horizontal: 4, vertical: 0 }}>
+      <HStack spacing={8}>
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          显示 {props.startResult}-{props.endResult} / {props.resultCount}
+        </Text>
+        <Spacer />
+        <Text font={"caption"} foregroundColor={"secondary"}>
+          第 {props.page}/{props.totalPages} 页
+        </Text>
+      </HStack>
+      {hasMultiplePages ? (
+        <HStack spacing={8}>
+          <Button
+            title="上一页"
+            buttonStyle="bordered"
+            action={() => props.onJumpToPage(props.page - 1)}
+          />
+          <Button
+            title="下一页"
+            buttonStyle="bordered"
+            action={() => props.onJumpToPage(props.page + 1)}
+          />
+          <Spacer />
+          <TextField
+            title="跳页"
+            placeholder="页码"
+            value={props.pageInput}
+            onChanged={props.onPageInputChange}
+          />
+          <Button
+            title="跳转"
+            buttonStyle="bordered"
+            action={() => props.onJumpToPage(Number.parseInt(props.pageInput, 10))}
+          />
+        </HStack>
+      ) : null}
+    </VStack>
+  );
+}
+
+function TrackActionButton(props: {
+  systemName: string;
+  color?: string;
+  action: () => void | Promise<void>;
+}) {
+  return (
+    <Button action={() => void props.action()}>
+      <HStack padding={{ horizontal: 8, vertical: 8 }}>
+        <Image
+          systemName={props.systemName}
+          resizable
+          aspectRatio={{ contentMode: "fit" }}
+          frame={{ width: 17, height: 17 }}
+          foregroundColor={props.color ?? "secondary"}
+        />
+      </HStack>
+    </Button>
+  );
+}
+
+function TrackRowDivider() {
+  return (
+    <HStack padding={{ horizontal: 14, vertical: 0 }}>
+      <HStack
+        frame={{ height: 1 }}
+        background={{
+          style: {
+            light: "rgba(148, 163, 184, 0.22)",
+            dark: "rgba(255, 255, 255, 0.09)",
+          },
+        }}>
+        <Spacer />
+      </HStack>
+    </HStack>
+  );
+}
+
 function TrackListRow(props: {
   key?: any;
   track: Track;
@@ -375,6 +465,8 @@ function TrackListRow(props: {
   playbackState: PlaybackUiState;
   playLoading: boolean;
   onPress: () => void | Promise<void>;
+  onFavorite?: () => void | Promise<void>;
+  embedded?: boolean;
 }) {
   const duration = formatDuration(props.track.durationSeconds);
   const status = trackStatusLabel(
@@ -384,11 +476,21 @@ function TrackListRow(props: {
   );
 
   return (
-    <Button action={() => void props.onPress()}>
       <HStack
-        spacing={12}
-        padding={{ horizontal: 12, vertical: 10 }}
-        background={azusaGlassBackground(props.isActive ? "accent" : "soft", 18)}>
+        spacing={10}
+        padding={{ horizontal: 12, vertical: 11 }}
+        background={
+          props.embedded
+            ? props.isActive
+              ? {
+                  style: {
+                    light: "rgba(219, 234, 254, 0.5)",
+                    dark: "rgba(96, 165, 250, 0.12)",
+                  },
+                }
+              : undefined
+            : azusaGlassBackground(props.isActive ? "accent" : "soft", 18)
+        }>
         <Text
           font={"title3"}
           foregroundColor={props.isActive ? "systemBlue" : "secondary"}>
@@ -417,15 +519,19 @@ function TrackListRow(props: {
           ) : null}
         </VStack>
         <Spacer />
-        <Image
+        {props.onFavorite ? (
+          <TrackActionButton
+            systemName="heart"
+            color="systemPink"
+            action={props.onFavorite}
+          />
+        ) : null}
+        <TrackActionButton
           systemName={props.isActive ? "speaker.wave.2.fill" : "play.fill"}
-          resizable
-          aspectRatio={{ contentMode: "fit" }}
-          frame={{ width: 16, height: 16 }}
-          foregroundColor={props.isActive ? "systemBlue" : "secondary"}
+          color={props.isActive ? "systemBlue" : "secondary"}
+          action={props.onPress}
         />
       </HStack>
-    </Button>
   );
 }
 
@@ -855,7 +961,7 @@ function QueueSearchPage(props: QueueToolsPageProps) {
           </Text>
         </VStack>
 
-        <CompactPager
+        <InlinePager
           page={pageState.page}
           totalPages={pageState.totalPages}
           startResult={pageState.startResult}
@@ -997,7 +1103,7 @@ function QueueBatchEditPage(props: QueueToolsPageProps) {
           />
         </HStack>
 
-        <CompactPager
+        <InlinePager
           page={pageState.page}
           totalPages={pageState.totalPages}
           startResult={pageState.startResult}
@@ -1233,11 +1339,11 @@ function PlaylistDetailPage(props: PlaylistDetailPageProps) {
           <HStack spacing={14}>
             <ArtworkView
               cover={props.playlist?.cover}
-              width={108}
-              height={108}
+              width={136}
+              height={76}
               contentMode="fill"
               backgroundStyle="none"
-              cornerRadius={18}
+              cornerRadius={16}
               fallbackColor="systemPurple"
             />
             <VStack alignment={"leading"} spacing={6}>
@@ -1299,7 +1405,7 @@ function PlaylistDetailPage(props: PlaylistDetailPageProps) {
           </HStack>
         </VStack>
 
-        <CompactPager
+        <InlinePager
           page={pageState.page}
           totalPages={pageState.totalPages}
           startResult={pageState.startResult}
@@ -1322,20 +1428,27 @@ function PlaylistDetailPage(props: PlaylistDetailPageProps) {
               </Text>
             </VStack>
           ) : (
-            <LazyVStack alignment={"leading"} spacing={12}>
-              {visibleTracks.map(({ track, index, displayIndex, isActive, rowId }) => (
-                <TrackListRow
-                  key={rowId}
-                  track={track}
-                  sourceTitle={props.sourceTitle}
-                  displayIndex={displayIndex}
-                  isActive={isActive}
-                  playbackState={props.playbackState}
-                  playLoading={props.playLoading}
-                  onPress={() => props.onPlayTrackAt(index)}
-                />
+            <VStack
+              alignment={"leading"}
+              spacing={0}
+              background={azusaGlassBackground("soft", 22)}>
+              {visibleTracks.map(({ track, index, displayIndex, isActive, rowId }, rowIndex) => (
+                <VStack key={rowId} alignment={"leading"} spacing={0}>
+                  <TrackListRow
+                    track={track}
+                    sourceTitle={props.sourceTitle}
+                    displayIndex={displayIndex}
+                    isActive={isActive}
+                    playbackState={props.playbackState}
+                    playLoading={props.playLoading}
+                    onPress={() => props.onPlayTrackAt(index)}
+                    onFavorite={() => props.onAddTracksByTitle("我喜欢的音乐", [track])}
+                    embedded
+                  />
+                  {rowIndex < visibleTracks.length - 1 ? <TrackRowDivider /> : null}
+                </VStack>
               ))}
-            </LazyVStack>
+            </VStack>
           )}
         </VStack>
 
@@ -1432,7 +1545,7 @@ function QueueTabPanel(props: PlaylistDetailPageProps) {
           onChanged={handleQueryChange}
         />
 
-        <CompactPager
+        <InlinePager
           page={pageState.page}
           totalPages={pageState.totalPages}
           startResult={pageState.startResult}
